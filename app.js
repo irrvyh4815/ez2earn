@@ -19,9 +19,11 @@ const defaultInfo = {
   billingPeriod: "2026/06/01 - 2026/06/10",
   paymentMethod: "轉帳",
   customPaymentMethod: "",
-  isTaxIncluded: true,
-  taxRate: 5,
+  isTaxIncluded: false,
+  taxRate: 0,
+  hasRetention: false,
   retentionRate: 0,
+  hasDiscount: false,
   discountAmount: 0,
   paymentTerms: "月結 30 天",
   remarks: ""
@@ -43,7 +45,9 @@ const infoFields = [
   "customPaymentMethod",
   "isTaxIncluded",
   "taxRate",
+  "hasRetention",
   "retentionRate",
+  "hasDiscount",
   "discountAmount",
   "paymentTerms",
   "remarks"
@@ -112,7 +116,13 @@ const selectAllDetails = document.querySelector("#selectAllDetails");
 const copySelectedDetailsButton = document.querySelector("#copySelectedDetailsButton");
 const deleteSelectedDetailsButton = document.querySelector("#deleteSelectedDetailsButton");
 const customPaymentMethodWrap = document.querySelector("#customPaymentMethodWrap");
+const taxRateWrap = document.querySelector("#taxRateWrap");
 const taxRateInput = document.querySelector("#taxRate");
+const retentionRateWrap = document.querySelector("#retentionRateWrap");
+const discountAmountWrap = document.querySelector("#discountAmountWrap");
+const toggleFormulaButton = document.querySelector("#toggleFormulaButton");
+const formulaPanel = document.querySelector("#formulaPanel");
+const formulaList = document.querySelector("#formulaList");
 const deleteConfirmPanel = document.querySelector("#deleteConfirmPanel");
 const deleteConfirmText = document.querySelector("#deleteConfirmText");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
@@ -842,6 +852,9 @@ function updateConditionalFields() {
   const info = state.activeInvoice?.info || {};
   const paymentMethod = document.querySelector("#paymentMethod")?.value || info.paymentMethod;
   customPaymentMethodWrap.classList.toggle("is-hidden", paymentMethod !== "自訂");
+  taxRateWrap.classList.toggle("is-hidden", !Boolean(info.isTaxIncluded));
+  retentionRateWrap.classList.toggle("is-hidden", !Boolean(info.hasRetention));
+  discountAmountWrap.classList.toggle("is-hidden", !Boolean(info.hasDiscount));
   taxRateInput.disabled = !Boolean(info.isTaxIncluded);
 }
 
@@ -865,11 +878,12 @@ function detailTotals(detail) {
 function summaryTotals(invoice = state.activeInvoice) {
   const subtotal = invoice.details.reduce((sum, detail) => sum + detailTotals(detail).amount, 0);
   const costTotal = invoice.details.reduce((sum, detail) => sum + detailTotals(detail).costAmount, 0);
-  const discountTotal = Math.min(toNumber(invoice.info.discountAmount), subtotal);
+  const discountTotal = invoice.info.hasDiscount ? Math.min(toNumber(invoice.info.discountAmount), subtotal) : 0;
   const netSubtotal = Math.max(subtotal - discountTotal, 0);
   const taxRate = invoice.info.isTaxIncluded ? toNumber(invoice.info.taxRate) : 0;
   const taxTotal = netSubtotal * (taxRate / 100);
-  const retentionTotal = netSubtotal * (toNumber(invoice.info.retentionRate) / 100);
+  const retentionRate = invoice.info.hasRetention ? toNumber(invoice.info.retentionRate) : 0;
+  const retentionTotal = netSubtotal * (retentionRate / 100);
   const grandTotal = netSubtotal + taxTotal - retentionTotal;
   const profitTotal = netSubtotal - costTotal;
   const marginTotal = netSubtotal === 0 ? 0 : profitTotal / netSubtotal;
@@ -898,6 +912,31 @@ function renderSummary() {
   document.querySelector("#costTotal").textContent = formatCurrency(totals.costTotal);
   document.querySelector("#profitTotal").textContent = formatCurrency(totals.profitTotal);
   document.querySelector("#marginTotal").textContent = formatPercent(totals.marginTotal);
+  renderFormulaPanel(totals);
+}
+
+function renderFormulaPanel(totals = summaryTotals()) {
+  const info = state.activeInvoice.info;
+  const taxRate = info.isTaxIncluded ? toNumber(info.taxRate) : 0;
+  const retentionRate = info.hasRetention ? toNumber(info.retentionRate) : 0;
+  formulaList.innerHTML = `
+    <div><strong>請款小計</strong><span>各明細「數量 × 請款單價」加總 = ${formatCurrency(totals.subtotal)}</span></div>
+    <div><strong>折扣費用</strong><span>${info.hasDiscount ? `輸入折扣 = ${formatCurrency(totals.discountTotal)}` : "未勾選，不列入折扣"}</span></div>
+    <div><strong>折扣後小計</strong><span>${formatCurrency(totals.subtotal)} - ${formatCurrency(totals.discountTotal)} = ${formatCurrency(totals.netSubtotal)}</span></div>
+    <div><strong>稅額</strong><span>${info.isTaxIncluded ? `${formatCurrency(totals.netSubtotal)} × ${formatRate(taxRate)} = ${formatCurrency(totals.taxTotal)}` : "未勾選含稅，稅額為 $0"}</span></div>
+    <div><strong>保留款</strong><span>${info.hasRetention ? `${formatCurrency(totals.netSubtotal)} × ${formatRate(retentionRate)} = ${formatCurrency(totals.retentionTotal)}` : "未勾選保留款，保留款為 $0"}</span></div>
+    <div><strong>本期應收</strong><span>${formatCurrency(totals.netSubtotal)} + ${formatCurrency(totals.taxTotal)} - ${formatCurrency(totals.retentionTotal)} = ${formatCurrency(totals.grandTotal)}</span></div>
+    <div><strong>內部成本</strong><span>各明細「數量 × 成本單價」加總 = ${formatCurrency(totals.costTotal)}</span></div>
+    <div><strong>預估利潤</strong><span>${formatCurrency(totals.netSubtotal)} - ${formatCurrency(totals.costTotal)} = ${formatCurrency(totals.profitTotal)}</span></div>
+    <div><strong>平均毛利率</strong><span>${formatCurrency(totals.profitTotal)} ÷ ${formatCurrency(totals.netSubtotal)} = ${formatPercent(totals.marginTotal)}</span></div>
+  `;
+}
+
+function toggleFormulaPanel(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const isOpen = formulaPanel.classList.toggle("is-hidden") === false;
+  toggleFormulaButton.setAttribute("aria-expanded", String(isOpen));
 }
 
 function addDetail() {
@@ -1397,7 +1436,7 @@ function buildPdfMeta(info) {
     ${buildPdfMetaItem("請款期間", info.billingPeriod)}
     ${buildPdfMetaItem("付款方式", getPaymentMethodLabel(info))}
     ${buildPdfMetaItem("付款條件", info.paymentTerms)}
-    ${buildPdfMetaItem("稅務 / 保留款", `${info.isTaxIncluded ? `含稅 ${formatRate(info.taxRate)}` : "未稅"} / ${formatRate(info.retentionRate)}`)}
+    ${buildPdfMetaItem("稅務 / 保留款", `${info.isTaxIncluded ? `含稅 ${formatRate(info.taxRate)}` : "未稅"} / ${info.hasRetention ? formatRate(info.retentionRate) : "無保留款"}`)}
   </section>`;
 }
 
@@ -1504,7 +1543,7 @@ function buildPdfSummary(totals, info, includeInternal) {
         <tr><th>折扣費用</th><td>${formatCurrency(totals.discountTotal)}</td></tr>
         <tr><th>折扣後小計</th><td>${formatCurrency(totals.netSubtotal)}</td></tr>
         ${taxRow}
-        <tr><th>保留款 ${escapeHtml(formatRate(info.retentionRate))}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>
+        <tr><th>${info.hasRetention ? `保留款 ${escapeHtml(formatRate(info.retentionRate))}` : "保留款"}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>
         <tr class="grand"><th>本期應收</th><td>${formatCurrency(totals.grandTotal)}</td></tr>
         ${internalRows}
       </tbody>
@@ -1741,6 +1780,7 @@ selectAllDetails.addEventListener("change", () => {
 confirmDeleteButton.addEventListener("click", confirmDeleteAction);
 cancelDeleteButton.addEventListener("click", closeDeleteConfirm);
 cancelDeleteActionButton.addEventListener("click", closeDeleteConfirm);
+toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
 saveInvoiceButton.addEventListener("click", () => saveActiveInvoice());
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 
@@ -1782,11 +1822,14 @@ adminAccountList.addEventListener("click", (event) => {
 });
 
 infoFields.forEach((field) => {
-  document.querySelector(`#${field}`).addEventListener("input", () => {
+  const input = document.querySelector(`#${field}`);
+  const syncField = () => {
     syncInfoFromInputs();
     renderSummary();
     markActiveInvoiceDirty();
-  });
+  };
+  input.addEventListener("input", syncField);
+  input.addEventListener("change", syncField);
 });
 
 detailsContainer.addEventListener("input", (event) => {

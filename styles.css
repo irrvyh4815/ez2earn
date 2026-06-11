@@ -630,6 +630,21 @@ h2 {
   grid-template-columns: 1fr;
 }
 
+.field-group-title {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--line);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.field-group-title:first-child {
+  margin-top: 0;
+  border-top: 0;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -695,6 +710,23 @@ textarea {
   padding: 0 12px 12px;
 }
 
+.summary-formula-button {
+  min-height: 34px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--accent-strong);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.summary-formula-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .summary-panel div {
   display: grid;
   gap: 4px;
@@ -720,16 +752,48 @@ textarea {
   border-color: #c8d7ef;
 }
 
+.formula-panel {
+  padding: 0 12px 12px;
+}
+
+.formula-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.formula-list div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.formula-list strong {
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+
+.formula-list span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .items-panel {
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .detail-header,
 .detail-row {
   display: grid;
-  grid-template-columns: 34px 40px 42px minmax(220px, 1.8fr) 80px minmax(88px, 0.6fr) minmax(112px, 0.8fr) minmax(112px, 0.8fr) minmax(110px, 0.8fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr) 40px;
+  grid-template-columns: 28px 34px 34px minmax(160px, 2fr) 64px 72px 92px 92px 96px 88px 88px 34px;
   align-items: center;
   gap: 8px;
+  min-width: 980px;
 }
 
 .detail-header {
@@ -821,6 +885,10 @@ textarea {
   display: none;
 }
 
+.detail-row label {
+  min-width: 0;
+}
+
 .detail-row input {
   width: 100%;
   min-height: 38px;
@@ -830,6 +898,7 @@ textarea {
   width: 18px;
   min-height: 18px;
   justify-self: center;
+  padding: 0;
 }
 
 .detail-row output {
@@ -1003,6 +1072,7 @@ textarea {
     grid-template-columns: 28px 38px 34px repeat(2, minmax(0, 1fr));
     align-items: end;
     gap: 10px;
+    min-width: 0;
     padding: 14px;
   }
 
@@ -1123,6 +1193,7 @@ textarea {
 
   .detail-row {
     grid-template-columns: 28px 38px minmax(0, 1fr) 38px;
+    min-width: 0;
   }
 
   .detail-index {

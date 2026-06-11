@@ -112,14 +112,14 @@
 
         <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel">
           <summary>
-            <span>邀請會員</span>
+            <span>邀請會員加入編輯</span>
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
-          <section class="invite-panel" aria-label="邀請會員">
+          <section class="invite-panel" aria-label="邀請會員加入編輯">
             <div>
-              <h2>邀請會員</h2>
+              <h2>邀請會員加入編輯</h2>
               <p>輸入對方 Email 或會員編號，對方會在提示欄位收到通知。</p>
             </div>
             <form id="inviteForm" class="invite-form">
@@ -136,10 +136,20 @@
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
           <section class="project-panel" aria-label="工程基本資料">
+            <div class="field-group-title">工程資訊</div>
             <label>
               工程名稱
               <input id="projectName" type="text">
             </label>
+            <label>
+              請款單號
+              <input id="invoiceNo" type="text">
+            </label>
+            <label>
+              請款期間
+              <input id="billingPeriod" type="text">
+            </label>
+            <div class="field-group-title">業主資訊</div>
             <label>
               業主/上游包商
               <input id="clientName" type="text">
@@ -156,6 +166,7 @@
               業主方電話
               <input id="clientPhone" type="tel">
             </label>
+            <div class="field-group-title">承攬方資訊</div>
             <label>
               承攬廠商
               <input id="contractorName" type="text">
@@ -172,14 +183,7 @@
               承攬方電話
               <input id="contractorPhone" type="tel">
             </label>
-            <label>
-              請款單號
-              <input id="invoiceNo" type="text">
-            </label>
-            <label>
-              請款期間
-              <input id="billingPeriod" type="text">
-            </label>
+            <div class="field-group-title">付款與扣款設定</div>
             <label>
               付款方式
               <select id="paymentMethod">
@@ -197,15 +201,23 @@
               <input id="isTaxIncluded" type="checkbox">
               <span>是否含稅</span>
             </label>
-            <label>
+            <label id="taxRateWrap" class="is-hidden">
               稅率(%)
               <input id="taxRate" type="number" min="0" step="0.1">
             </label>
-            <label>
+            <label class="checkbox-field">
+              <input id="hasRetention" type="checkbox">
+              <span>是否有保留款</span>
+            </label>
+            <label id="retentionRateWrap" class="is-hidden">
               保留款(%)
               <input id="retentionRate" type="number" min="0" step="0.1">
             </label>
-            <label>
+            <label class="checkbox-field">
+              <input id="hasDiscount" type="checkbox">
+              <span>是否有折扣費用</span>
+            </label>
+            <label id="discountAmountWrap" class="is-hidden">
               折扣費用
               <input id="discountAmount" type="number" min="0" step="1">
             </label>
@@ -219,6 +231,7 @@
         <details class="fold-panel" open>
           <summary>
             <span>請款摘要</span>
+            <button class="summary-formula-button" id="toggleFormulaButton" type="button" aria-expanded="false">查看計算式</button>
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
           <aside class="summary-panel" aria-label="請款摘要">
@@ -259,6 +272,9 @@
               <strong id="marginTotal">0%</strong>
             </div>
           </aside>
+          <section class="formula-panel is-hidden" id="formulaPanel" aria-label="計算式">
+            <div id="formulaList" class="formula-list"></div>
+          </section>
         </details>
 
         <details class="fold-panel" open>
@@ -291,7 +307,7 @@
               <button class="secondary-button" id="addDetailButton" type="button">新增明細</button>
             </div>
           </div>
-          <div class="detail-header" aria-hidden="true">
+          <div class="detail-header">
             <span>
               <input id="selectAllDetails" type="checkbox" aria-label="全選明細">
             </span>
