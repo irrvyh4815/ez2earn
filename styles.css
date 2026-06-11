@@ -56,7 +56,8 @@ button:disabled {
 }
 
 .view {
-  animation: viewIn 0.26s ease both;
+  animation: viewIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 50% 16px;
 }
 
 .view.is-hidden {
@@ -64,28 +65,39 @@ button:disabled {
 }
 
 .view.is-leaving {
-  animation: viewOut 0.16s ease both;
+  animation: viewOut 0.26s cubic-bezier(0.55, 0, 1, 0.45) both;
 }
 
 .view.is-entering {
-  animation: viewIn 0.26s ease both;
+  animation: viewIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes viewIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    filter: blur(8px);
+    transform: translateY(22px) scale(0.982);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    filter: blur(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes viewOut {
   to {
     opacity: 0;
-    transform: translateY(8px);
+    filter: blur(6px);
+    transform: translateY(-12px) scale(0.988);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view,
+  .view.is-leaving,
+  .view.is-entering {
+    animation-duration: 0.01ms;
   }
 }
 

@@ -116,6 +116,7 @@ const selectAllDetails = document.querySelector("#selectAllDetails");
 const copySelectedDetailsButton = document.querySelector("#copySelectedDetailsButton");
 const deleteSelectedDetailsButton = document.querySelector("#deleteSelectedDetailsButton");
 const customPaymentMethodWrap = document.querySelector("#customPaymentMethodWrap");
+const customPaymentMethodInput = document.querySelector("#customPaymentMethod");
 const taxRateWrap = document.querySelector("#taxRateWrap");
 const taxRateInput = document.querySelector("#taxRate");
 const retentionRateWrap = document.querySelector("#retentionRateWrap");
@@ -550,8 +551,8 @@ function animateViewChange(next) {
     currentView.classList.remove("is-leaving");
     const activeView = getCurrentView();
     activeView.classList.add("is-entering");
-    window.setTimeout(() => activeView.classList.remove("is-entering"), 260);
-  }, 150);
+    window.setTimeout(() => activeView.classList.remove("is-entering"), 520);
+  }, 260);
 }
 
 function showList() {
@@ -853,13 +854,15 @@ function syncInfoFromInputs() {
 function updateConditionalFields() {
   const info = state.activeInvoice?.info || {};
   const paymentMethod = document.querySelector("#paymentMethod")?.value || info.paymentMethod;
-  customPaymentMethodWrap.classList.toggle("is-hidden", paymentMethod !== "自訂");
+  const customPaymentEnabled = paymentMethod === "自訂";
   const taxEnabled = Boolean(info.isTaxIncluded);
   const retentionEnabled = Boolean(info.hasRetention);
   const discountEnabled = Boolean(info.hasDiscount);
+  customPaymentMethodWrap.classList.toggle("is-disabled-field", !customPaymentEnabled);
   taxRateWrap.classList.toggle("is-disabled-field", !taxEnabled);
   retentionRateWrap.classList.toggle("is-disabled-field", !retentionEnabled);
   discountAmountWrap.classList.toggle("is-disabled-field", !discountEnabled);
+  customPaymentMethodInput.disabled = !customPaymentEnabled;
   taxRateInput.disabled = !taxEnabled;
   retentionRateInput.disabled = !retentionEnabled;
   discountAmountInput.disabled = !discountEnabled;
@@ -1147,7 +1150,7 @@ function buildPdfDocument(type, invoice) {
     <style>
       @page {
         size: A4;
-        margin: 14mm;
+        margin: 0;
       }
 
       * {
@@ -1159,12 +1162,18 @@ function buildPdfDocument(type, invoice) {
         color: #152033;
         background: #ffffff;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-        font-size: 12px;
+        font-size: 11.5px;
         line-height: 1.55;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
       }
 
       .document {
-        width: 100%;
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 10mm 9mm;
+        overflow: hidden;
       }
 
       .doc-header {
@@ -1257,6 +1266,8 @@ function buildPdfDocument(type, invoice) {
       table {
         width: 100%;
         border-collapse: collapse;
+        border-spacing: 0;
+        table-layout: fixed;
         page-break-inside: auto;
       }
 
@@ -1268,8 +1279,9 @@ function buildPdfDocument(type, invoice) {
       th,
       td {
         border: 1px solid #cbd5e1;
-        padding: 7px 8px;
+        padding: 5px 6px;
         vertical-align: top;
+        overflow-wrap: anywhere;
       }
 
       th {
@@ -1293,8 +1305,53 @@ function buildPdfDocument(type, invoice) {
       }
 
       .amount {
+        font-size: 10.6px;
         text-align: right;
         white-space: nowrap;
+      }
+
+      .details-table .index-col {
+        width: 6%;
+      }
+
+      .details-table .name-col {
+        width: auto;
+      }
+
+      .details-table .unit-col {
+        width: 8%;
+      }
+
+      .details-table .qty-col {
+        width: 8%;
+      }
+
+      .details-table .amount-col {
+        width: 14%;
+      }
+
+      .internal-table .index-col {
+        width: 5%;
+      }
+
+      .internal-table .name-col {
+        width: 25%;
+      }
+
+      .internal-table .unit-col {
+        width: 6%;
+      }
+
+      .internal-table .qty-col {
+        width: 7%;
+      }
+
+      .internal-table .amount-col {
+        width: 10%;
+      }
+
+      .internal-table .percent-col {
+        width: 8%;
       }
 
       .summary-wrap {
@@ -1396,6 +1453,12 @@ function buildPdfDocument(type, invoice) {
       }
 
       @media print {
+        html,
+        body {
+          width: 210mm;
+          min-height: 297mm;
+        }
+
         .print-actions {
           display: none;
         }
@@ -1470,15 +1533,15 @@ function buildClientPdfBody(invoice) {
 
   return `<section>
     <h2 class="section-title">請款明細</h2>
-    <table>
+    <table class="details-table client-table">
       <thead>
         <tr>
-          <th style="width: 42px;">序號</th>
-          <th>明細表單</th>
-          <th style="width: 60px;">單位</th>
-          <th style="width: 68px;">數量</th>
-          <th style="width: 108px;">單價</th>
-          <th style="width: 118px;">金額</th>
+          <th class="index-col">序號</th>
+          <th class="name-col">明細表單</th>
+          <th class="unit-col">單位</th>
+          <th class="qty-col">數量</th>
+          <th class="amount-col">單價</th>
+          <th class="amount-col">金額</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1507,19 +1570,19 @@ function buildInternalPdfBody(invoice) {
 
   return `<section>
     <h2 class="section-title">請款明細</h2>
-    <table>
+    <table class="details-table internal-table">
       <thead>
         <tr>
-          <th style="width: 36px;">序號</th>
-          <th>明細表單</th>
-          <th style="width: 48px;">單位</th>
-          <th style="width: 56px;">數量</th>
-          <th style="width: 88px;">請款單價</th>
-          <th style="width: 88px;">成本單價</th>
-          <th style="width: 98px;">請款金額</th>
-          <th style="width: 88px;">成本</th>
-          <th style="width: 88px;">利潤</th>
-          <th style="width: 62px;">毛利率</th>
+          <th class="index-col">序號</th>
+          <th class="name-col">明細表單</th>
+          <th class="unit-col">單位</th>
+          <th class="qty-col">數量</th>
+          <th class="amount-col">請款單價</th>
+          <th class="amount-col">成本單價</th>
+          <th class="amount-col">請款金額</th>
+          <th class="amount-col">成本</th>
+          <th class="amount-col">利潤</th>
+          <th class="percent-col">毛利率</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
