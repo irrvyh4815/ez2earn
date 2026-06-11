@@ -3,7 +3,6 @@ const INVITATION_STORAGE_KEY = "ez2earn-invitations-v1";
 const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
 const ADMIN_EMAIL = "irrvyh4815@gmail.com";
-const ADMIN_PASSWORD = "testez2earn";
 const PBKDF2_ITERATIONS = 150000;
 
 const defaultInfo = {
@@ -113,7 +112,7 @@ function formatDateCode(date) {
 async function initApp() {
   state.accounts = loadAccounts();
   state.invitations = loadInvitations();
-  await ensureAdminAccount();
+  ensureAdminAccount();
   showAuth();
 }
 
@@ -157,23 +156,12 @@ function saveInvitations() {
   localStorage.setItem(INVITATION_STORAGE_KEY, JSON.stringify(state.invitations));
 }
 
-async function ensureAdminAccount() {
+function ensureAdminAccount() {
   const adminEmail = normalizeEmail(ADMIN_EMAIL);
-  if (state.accounts.some((account) => account.email === adminEmail)) return;
-
-  const salt = randomBase64(16);
-  const passwordHash = await derivePasswordHash(ADMIN_PASSWORD, salt);
-  state.accounts.unshift({
-    email: adminEmail,
-    nickname: "最高權限管理員",
-    memberCode: "EZ-ADMIN-001",
-    role: "admin",
-    salt,
-    passwordHash,
-    disabled: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  });
+  const adminAccount = state.accounts.find((account) => account.email === adminEmail);
+  if (!adminAccount) return;
+  adminAccount.role = "admin";
+  adminAccount.memberCode = "EZ-ADMIN-001";
   saveAccounts();
 }
 
@@ -372,8 +360,8 @@ async function handleRegister(event) {
   const account = {
     email,
     nickname,
-    memberCode: generateMemberCode(),
-    role: "user",
+    memberCode: email === normalizeEmail(ADMIN_EMAIL) ? "EZ-ADMIN-001" : generateMemberCode(),
+    role: email === normalizeEmail(ADMIN_EMAIL) ? "admin" : "user",
     salt,
     passwordHash: await derivePasswordHash(password, salt),
     disabled: false,

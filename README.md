@@ -11,7 +11,8 @@
 
 匯出格式為 UTF-8 BOM CSV，可用 Excel、Numbers 或 Google Sheets 開啟。業主端匯出會隱藏成本、利潤、毛利率等內部欄位。
 
-預設最高權限管理員：
+最高權限管理員 Email 已保留：
 
 - Email: `irrvyh4815@gmail.com`
-- 密碼: `testez2earn`
+
+第一次以此 Email 註冊時會自動成為最高權限管理員。密碼不會寫入程式碼或 GitHub，請在註冊時設定符合規則的強密碼。
