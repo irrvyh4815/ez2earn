@@ -37,6 +37,7 @@ const state = {
   invoices: [],
   activeInvoiceId: null,
   activeInvoice: null,
+  isInvoiceDirty: false,
   draggedDetailId: null,
   pointerDragId: null,
   pointerDropId: null
@@ -75,6 +76,15 @@ const adminPanel = document.querySelector("#adminPanel");
 const adminAccountList = document.querySelector("#adminAccountList");
 const accountCount = document.querySelector("#accountCount");
 const inviteMessage = document.querySelector("#inviteMessage");
+const sessionSidebar = document.querySelector("#sessionSidebar");
+const sidebarUserLine = document.querySelector("#sidebarUserLine");
+const sidebarLastSavedLine = document.querySelector("#sidebarLastSavedLine");
+const lastSavedLine = document.querySelector("#lastSavedLine");
+const leaveConfirmPanel = document.querySelector("#leaveConfirmPanel");
+const saveAndLeaveButton = document.querySelector("#saveAndLeaveButton");
+const leaveWithoutSaveButton = document.querySelector("#leaveWithoutSaveButton");
+const stayOnFormButton = document.querySelector("#stayOnFormButton");
+const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -280,16 +290,28 @@ function base64ToBytes(base64) {
 }
 
 function showAuth(mode = "login") {
-  state.currentUser = null;
-  state.cryptoKey = null;
-  state.invoices = [];
-  state.activeInvoice = null;
-  state.activeInvoiceId = null;
-  authView.classList.remove("is-hidden");
-  listView.classList.add("is-hidden");
-  formView.classList.add("is-hidden");
-  accountPanel.classList.add("is-hidden");
-  switchAuthTab(mode);
+  const next = () => {
+    state.currentUser = null;
+    state.cryptoKey = null;
+    state.invoices = [];
+    state.activeInvoice = null;
+    state.activeInvoiceId = null;
+    state.isInvoiceDirty = false;
+    authView.classList.remove("is-hidden");
+    listView.classList.add("is-hidden");
+    formView.classList.add("is-hidden");
+    accountPanel.classList.add("is-hidden");
+    detailsContainer.innerHTML = "";
+    closeLeaveConfirm();
+    updateSessionSidebar(false);
+    switchAuthTab(mode);
+  };
+
+  if (authView.classList.contains("is-hidden")) {
+    animateViewChange(next);
+  } else {
+    next();
+  }
 }
 
 function switchAuthTab(mode) {
@@ -469,14 +491,18 @@ function cloneData(value) {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
 }
 
+function getCurrentView() {
+  return [authView, listView, formView].find((view) => !view.classList.contains("is-hidden")) || authView;
+}
+
 function animateViewChange(next) {
-  const currentView = listView.classList.contains("is-hidden") ? formView : listView;
+  const currentView = getCurrentView();
   currentView.classList.add("is-leaving");
 
   window.setTimeout(() => {
     next();
     currentView.classList.remove("is-leaving");
-    const activeView = listView.classList.contains("is-hidden") ? formView : listView;
+    const activeView = getCurrentView();
     activeView.classList.add("is-entering");
     window.setTimeout(() => activeView.classList.remove("is-entering"), 260);
   }, 150);
@@ -486,16 +512,20 @@ function showList() {
   const next = () => {
     state.activeInvoiceId = null;
     state.activeInvoice = null;
+    state.isInvoiceDirty = false;
     closeExportMenu();
+    closeLeaveConfirm();
     authView.classList.add("is-hidden");
     listView.classList.remove("is-hidden");
     formView.classList.add("is-hidden");
+    detailsContainer.innerHTML = "";
     renderCurrentUser();
     renderNotices();
     renderInvoiceList();
+    updateSessionSidebar(true);
   };
 
-  if (formView.classList.contains("is-hidden")) {
+  if (!listView.classList.contains("is-hidden")) {
     next();
   } else {
     animateViewChange(next);
@@ -507,6 +537,7 @@ function showForm(invoiceId) {
     const invoice = state.invoices.find((item) => item.id === invoiceId);
     state.activeInvoice = cloneData(invoice);
     state.activeInvoiceId = invoiceId;
+    state.isInvoiceDirty = false;
     authView.classList.add("is-hidden");
     listView.classList.add("is-hidden");
     formView.classList.remove("is-hidden");
@@ -514,19 +545,58 @@ function showForm(invoiceId) {
     inviteMessage.textContent = "";
     renderCurrentUser();
     renderForm();
+    renderLastSaved();
+    updateSessionSidebar(true);
   };
 
-  if (listView.classList.contains("is-hidden")) {
+  if (!formView.classList.contains("is-hidden")) {
     next();
   } else {
     animateViewChange(next);
   }
 }
 
+function requestBackToList() {
+  leaveConfirmPanel.classList.remove("is-hidden");
+}
+
+function closeLeaveConfirm() {
+  leaveConfirmPanel.classList.add("is-hidden");
+}
+
+async function saveAndReturnToList() {
+  await saveActiveInvoice({ silent: true });
+  closeLeaveConfirm();
+  showList();
+}
+
+function returnToListWithoutSaving() {
+  closeLeaveConfirm();
+  showList();
+}
+
 function renderCurrentUser() {
   const text = `${state.currentUser.nickname} · ${state.currentUser.memberCode}`;
   document.querySelector("#currentUserLine").textContent = text;
   document.querySelector("#formUserLine").textContent = text;
+  sidebarUserLine.textContent = text;
+}
+
+function updateSessionSidebar(isVisible = Boolean(state.currentUser)) {
+  document.body.classList.toggle("has-session-sidebar", isVisible);
+  sessionSidebar.classList.toggle("is-hidden", !isVisible);
+  if (!isVisible || !state.currentUser) return;
+  renderCurrentUser();
+  renderLastSaved();
+}
+
+function renderLastSaved() {
+  const activeInvoice = state.activeInvoice || state.invoices
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+  const message = `最近儲存：${activeInvoice?.updatedAt ? formatFullDateTime(activeInvoice.updatedAt) : "尚未儲存"}`;
+  lastSavedLine.textContent = message;
+  sidebarLastSavedLine.textContent = message;
 }
 
 function renderInvoiceList() {
@@ -703,7 +773,7 @@ function addDetail() {
   state.activeInvoice.details.push(createEmptyDetail());
   renderDetails();
   renderSummary();
-  setSaveStatus("");
+  markActiveInvoiceDirty();
   detailsContainer.lastElementChild?.querySelector("input")?.focus();
 }
 
@@ -715,7 +785,7 @@ function deleteDetail(index) {
   }
   renderDetails();
   renderSummary();
-  setSaveStatus("");
+  markActiveInvoiceDirty();
 }
 
 async function saveActiveInvoice(options = {}) {
@@ -729,6 +799,8 @@ async function saveActiveInvoice(options = {}) {
     state.activeInvoiceId = state.activeInvoice.id;
   }
   await persistInvoices();
+  state.isInvoiceDirty = false;
+  renderLastSaved();
 
   if (!options.silent) {
     setSaveStatus("已儲存");
@@ -739,6 +811,11 @@ async function saveActiveInvoice(options = {}) {
 
 function setSaveStatus(message) {
   saveStatus.textContent = message;
+}
+
+function markActiveInvoiceDirty() {
+  state.isInvoiceDirty = true;
+  setSaveStatus("尚未儲存");
 }
 
 function updateVisibleDetailTotals(index) {
@@ -758,7 +835,7 @@ function moveDetail(fromId, toId) {
   const [moved] = state.activeInvoice.details.splice(fromIndex, 1);
   state.activeInvoice.details.splice(toIndex, 0, moved);
   renderDetails();
-  setSaveStatus("");
+  markActiveInvoiceDirty();
 }
 
 function clearDragClasses() {
@@ -1368,6 +1445,8 @@ function deleteAccount(memberCode) {
 }
 
 function logout() {
+  closeAccountPanel();
+  closeLeaveConfirm();
   showAuth();
 }
 
@@ -1400,6 +1479,18 @@ function formatFullDate(value) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
+  });
+}
+
+function formatFullDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "尚未儲存";
+  return date.toLocaleString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
   });
 }
 
@@ -1443,12 +1534,16 @@ document.querySelector("#newInvoiceButton").addEventListener("click", async () =
   showForm(invoice.id);
 });
 
-document.querySelector("#backToListButton").addEventListener("click", showList);
+document.querySelector("#backToListButton").addEventListener("click", requestBackToList);
 document.querySelector("#accountButton").addEventListener("click", openAccountPanel);
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#closeAccountButton").addEventListener("click", closeAccountPanel);
 document.querySelector("#accountForm").addEventListener("submit", updateCurrentAccount);
 document.querySelector("#inviteForm").addEventListener("submit", inviteMember);
+saveAndLeaveButton.addEventListener("click", saveAndReturnToList);
+leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
+stayOnFormButton.addEventListener("click", closeLeaveConfirm);
+cancelLeaveButton.addEventListener("click", closeLeaveConfirm);
 saveInvoiceButton.addEventListener("click", () => saveActiveInvoice());
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 
@@ -1485,7 +1580,7 @@ infoFields.forEach((field) => {
   document.querySelector(`#${field}`).addEventListener("input", () => {
     syncInfoFromInputs();
     renderSummary();
-    setSaveStatus("");
+    markActiveInvoiceDirty();
   });
 });
 
@@ -1498,7 +1593,7 @@ detailsContainer.addEventListener("input", (event) => {
     state.activeInvoice.details[detailIndex][field] = target.type === "number" ? toNumber(target.value) : target.value;
     renderSummary();
     updateVisibleDetailTotals(detailIndex);
-    setSaveStatus("");
+    markActiveInvoiceDirty();
   }
 });
 
@@ -1595,6 +1690,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeExportMenu();
     closeAccountPanel();
+    closeLeaveConfirm();
   }
 });
 

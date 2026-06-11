@@ -68,19 +68,9 @@
             <p class="user-line" id="currentUserLine"></p>
           </div>
           <div class="actions">
-            <button class="secondary-button" id="accountButton" type="button">帳號管理</button>
-            <button class="secondary-button" id="logoutButton" type="button">登出</button>
             <button class="primary-button" id="newInvoiceButton" type="button">新增請款單</button>
           </div>
         </header>
-
-        <section class="notice-panel" aria-label="提示通知">
-          <div class="list-heading">
-            <h2>提示欄位</h2>
-            <p id="noticeCount">0 則</p>
-          </div>
-          <div id="noticeList" class="notice-list"></div>
-        </section>
 
         <section class="list-panel" aria-label="請款單列表">
           <div class="list-heading">
@@ -97,6 +87,7 @@
             <p class="eyebrow">Ez2Earn</p>
             <h1>工程請款表單</h1>
             <p class="user-line" id="formUserLine"></p>
+            <p class="saved-line" id="lastSavedLine">最近儲存：尚未儲存</p>
           </div>
           <div class="actions">
             <button class="secondary-button" id="backToListButton" type="button">返回列表</button>
@@ -246,6 +237,45 @@
           <div id="detailsContainer" class="details-list"></div>
         </section>
       </section>
+
+      <aside id="sessionSidebar" class="session-sidebar is-hidden" aria-label="工作側欄">
+        <section class="sidebar-card">
+          <p class="eyebrow">Session</p>
+          <h2>帳號</h2>
+          <p class="sidebar-user" id="sidebarUserLine"></p>
+          <p class="sidebar-saved" id="sidebarLastSavedLine">最近儲存：尚未儲存</p>
+          <div class="sidebar-actions">
+            <button class="secondary-button" id="accountButton" type="button">帳號管理</button>
+            <button class="secondary-button" id="logoutButton" type="button">登出</button>
+          </div>
+        </section>
+
+        <section class="notice-panel sidebar-card" aria-label="提示通知">
+          <div class="list-heading">
+            <h2>提示欄位</h2>
+            <p id="noticeCount">0 則</p>
+          </div>
+          <div id="noticeList" class="notice-list"></div>
+        </section>
+      </aside>
+
+      <div id="leaveConfirmPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="leaveConfirmTitle">
+        <div class="modal-card confirm-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Confirm</p>
+              <h2 id="leaveConfirmTitle">離開表單前要儲存嗎？</h2>
+            </div>
+            <button class="icon-close" id="cancelLeaveButton" type="button" aria-label="取消">×</button>
+          </div>
+          <p class="confirm-text">你可以先儲存目前內容再返回列表，或不儲存直接離開。</p>
+          <div class="confirm-actions">
+            <button class="primary-button" id="saveAndLeaveButton" type="button">儲存後離開</button>
+            <button class="secondary-button" id="leaveWithoutSaveButton" type="button">不儲存離開</button>
+            <button class="secondary-button" id="stayOnFormButton" type="button">取消</button>
+          </div>
+        </div>
+      </div>
 
       <div id="accountPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
         <div class="modal-card">
