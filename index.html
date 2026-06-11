@@ -74,8 +74,14 @@
 
         <section class="list-panel" aria-label="請款單列表">
           <div class="list-heading">
-            <h2>已儲存請款單</h2>
-            <p id="invoiceCount">0 張</p>
+            <div>
+              <h2>已儲存請款單</h2>
+              <p id="invoiceCount">0 張</p>
+            </div>
+            <label class="search-field">
+              <span>查詢請款單</span>
+              <input id="invoiceSearchInput" type="search" placeholder="工程名稱 / 請款單號">
+            </label>
           </div>
           <div id="invoiceList" class="invoice-list"></div>
         </section>
@@ -92,6 +98,7 @@
           <div class="actions">
             <button class="secondary-button" id="backToListButton" type="button">返回列表</button>
             <button class="secondary-button" id="saveInvoiceButton" type="button">儲存</button>
+            <button class="secondary-button" id="closeInvoiceButton" type="button">結案</button>
             <button class="secondary-button danger-button" id="deleteInvoiceButton" type="button">刪除</button>
             <div class="export-wrap">
               <button class="primary-button" id="exportButton" type="button" aria-haspopup="true" aria-expanded="false">
@@ -380,6 +387,23 @@
           <div class="confirm-actions">
             <button class="secondary-button" id="cancelDeleteActionButton" type="button">取消</button>
             <button class="primary-button danger-primary" id="confirmDeleteButton" type="button">確認刪除</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="closeConfirmPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="closeConfirmTitle">
+        <div class="modal-card confirm-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Close</p>
+              <h2 id="closeConfirmTitle">確認結案</h2>
+            </div>
+            <button class="icon-close" id="cancelCloseButton" type="button" aria-label="取消">×</button>
+          </div>
+          <p class="confirm-text" id="closeConfirmText">結案後會移入主列表的已結案分組。</p>
+          <div class="confirm-actions">
+            <button class="secondary-button" id="cancelCloseActionButton" type="button">取消</button>
+            <button class="primary-button" id="confirmCloseButton" type="button">確認結案</button>
           </div>
         </div>
       </div>

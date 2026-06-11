@@ -64,9 +64,11 @@ const state = {
   isInvoiceDirty: false,
   selectedDetailIds: new Set(),
   pendingDeleteAction: null,
+  pendingCloseAction: null,
   draggedDetailId: null,
   pointerDragId: null,
-  pointerDropId: null
+  pointerDropId: null,
+  invoiceSearchQuery: ""
 };
 
 const currencyFormatter = new Intl.NumberFormat("zh-TW", {
@@ -89,6 +91,7 @@ const registerForm = document.querySelector("#registerForm");
 const authMessage = document.querySelector("#authMessage");
 const invoiceList = document.querySelector("#invoiceList");
 const invoiceCount = document.querySelector("#invoiceCount");
+const invoiceSearchInput = document.querySelector("#invoiceSearchInput");
 const noticeList = document.querySelector("#noticeList");
 const noticeCount = document.querySelector("#noticeCount");
 const detailsContainer = document.querySelector("#detailsContainer");
@@ -112,6 +115,7 @@ const leaveWithoutSaveButton = document.querySelector("#leaveWithoutSaveButton")
 const stayOnFormButton = document.querySelector("#stayOnFormButton");
 const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
 const deleteInvoiceButton = document.querySelector("#deleteInvoiceButton");
+const closeInvoiceButton = document.querySelector("#closeInvoiceButton");
 const selectAllDetails = document.querySelector("#selectAllDetails");
 const copySelectedDetailsButton = document.querySelector("#copySelectedDetailsButton");
 const deleteSelectedDetailsButton = document.querySelector("#deleteSelectedDetailsButton");
@@ -131,6 +135,11 @@ const deleteConfirmText = document.querySelector("#deleteConfirmText");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
 const cancelDeleteButton = document.querySelector("#cancelDeleteButton");
 const cancelDeleteActionButton = document.querySelector("#cancelDeleteActionButton");
+const closeConfirmPanel = document.querySelector("#closeConfirmPanel");
+const closeConfirmText = document.querySelector("#closeConfirmText");
+const confirmCloseButton = document.querySelector("#confirmCloseButton");
+const cancelCloseButton = document.querySelector("#cancelCloseButton");
+const cancelCloseActionButton = document.querySelector("#cancelCloseActionButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -138,6 +147,8 @@ function createInvoice(overrides = {}) {
     id: createId("invoice"),
     ownerMemberCode: state.currentUser?.memberCode || "",
     updatedAt: now.toISOString(),
+    isClosed: false,
+    closedAt: "",
     collaborators: [],
     info: { ...defaultInfo, invoiceNo: `INV-${formatDateCode(now)}` },
     details: [
@@ -350,6 +361,7 @@ function showAuth(mode = "login") {
     detailsContainer.innerHTML = "";
     closeLeaveConfirm();
     closeDeleteConfirm();
+    closeCloseConfirm();
     updateSessionSidebar(false);
     switchAuthTab(mode);
   };
@@ -489,6 +501,8 @@ function normalizeInvoice(invoice) {
     ...fallback,
     ...invoice,
     ownerMemberCode: invoice.ownerMemberCode || state.currentUser?.memberCode || "",
+    isClosed: Boolean(invoice.isClosed),
+    closedAt: invoice.closedAt || "",
     collaborators: Array.isArray(invoice.collaborators) ? invoice.collaborators : [],
     info: { ...defaultInfo, ...(invoice.info || {}) },
     details: normalizeDetails(invoice)
@@ -564,6 +578,7 @@ function showList() {
     closeExportMenu();
     closeLeaveConfirm();
     closeDeleteConfirm();
+    closeCloseConfirm();
     authView.classList.add("is-hidden");
     listView.classList.remove("is-hidden");
     formView.classList.add("is-hidden");
@@ -593,6 +608,7 @@ function showForm(invoiceId) {
     formView.classList.remove("is-hidden");
     saveStatus.textContent = "";
     inviteMessage.textContent = "";
+    closeCloseConfirm();
     renderCurrentUser();
     renderForm();
     renderLastSaved();
@@ -631,6 +647,8 @@ async function copyInvoice(invoiceId) {
   const copy = cloneData(source);
   copy.id = createId("invoice");
   copy.updatedAt = new Date().toISOString();
+  copy.isClosed = false;
+  copy.closedAt = "";
   copy.info = {
     ...defaultInfo,
     ...copy.info,
@@ -682,6 +700,37 @@ async function confirmDeleteAction() {
   }
 }
 
+function requestCloseInvoice() {
+  if (!state.activeInvoice || state.activeInvoice.isClosed) return;
+  const title = state.activeInvoice.info.projectName || state.activeInvoice.info.invoiceNo || "此請款單";
+  state.pendingCloseAction = closeActiveInvoice;
+  closeConfirmText.textContent = `確定將「${title}」結案？結案後會移入主列表的已結案分組。`;
+  closeConfirmPanel.classList.remove("is-hidden");
+}
+
+function closeCloseConfirm() {
+  state.pendingCloseAction = null;
+  closeConfirmPanel.classList.add("is-hidden");
+}
+
+async function confirmCloseAction() {
+  const action = state.pendingCloseAction;
+  closeCloseConfirm();
+  if (typeof action === "function") {
+    await action();
+  }
+}
+
+async function closeActiveInvoice() {
+  if (!state.activeInvoice || state.activeInvoice.isClosed) return;
+  const now = new Date().toISOString();
+  state.activeInvoice.isClosed = true;
+  state.activeInvoice.closedAt = now;
+  state.activeInvoice.updatedAt = now;
+  await saveActiveInvoice({ silent: true });
+  showList();
+}
+
 function renderCurrentUser() {
   const text = `${state.currentUser.nickname} · ${state.currentUser.memberCode}`;
   document.querySelector("#currentUserLine").textContent = text;
@@ -707,24 +756,62 @@ function renderLastSaved() {
 }
 
 function renderInvoiceList() {
-  invoiceCount.textContent = `${state.invoices.length} 張`;
+  const query = state.invoiceSearchQuery.trim().toLowerCase();
+  const filteredInvoices = state.invoices
+    .filter((invoice) => {
+      if (!query) return true;
+      const haystack = `${invoice.info.projectName || ""} ${invoice.info.invoiceNo || ""}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const ongoingInvoices = filteredInvoices.filter((invoice) => !invoice.isClosed);
+  const closedInvoices = filteredInvoices.filter((invoice) => invoice.isClosed);
+
+  invoiceCount.textContent = query
+    ? `${filteredInvoices.length} / ${state.invoices.length} 張`
+    : `${state.invoices.length} 張`;
   invoiceList.innerHTML = "";
 
-  state.invoices
-    .slice()
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-    .forEach((invoice) => {
-      const totals = summaryTotals(invoice);
-      const card = document.createElement("article");
-      card.className = "invoice-card";
-      card.innerHTML = `
+  if (filteredInvoices.length === 0) {
+    invoiceList.innerHTML = `<p class="empty-state">找不到符合查詢條件的請款單。</p>`;
+    return;
+  }
+
+  renderInvoiceGroup("進行中", ongoingInvoices);
+  renderInvoiceGroup("已結案", closedInvoices);
+}
+
+function renderInvoiceGroup(title, invoices) {
+  const group = document.createElement("section");
+  group.className = "invoice-group";
+  group.innerHTML = `
+    <div class="invoice-group-heading">
+      <h3>${title}</h3>
+      <span>${invoices.length} 張</span>
+    </div>
+  `;
+
+  if (invoices.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = title === "已結案" ? "目前沒有已結案請款單。" : "目前沒有進行中的請款單。";
+    group.appendChild(empty);
+    invoiceList.appendChild(group);
+    return;
+  }
+
+  invoices.forEach((invoice) => {
+    const totals = summaryTotals(invoice);
+    const card = document.createElement("article");
+    card.className = `invoice-card${invoice.isClosed ? " is-closed" : ""}`;
+    card.innerHTML = `
         <div>
-          <h2>${escapeHtml(invoice.info.projectName || "未命名工程")}</h2>
+          <h2>${escapeHtml(invoice.info.projectName || "未命名工程")} ${invoice.isClosed ? '<span class="status-pill">已結案</span>' : ""}</h2>
           <p>${escapeHtml(invoice.info.invoiceNo || "未填單號")} · ${escapeHtml(invoice.info.clientName || "未填業主")}</p>
         </div>
         <div class="invoice-card-meta">
           <strong>${formatCurrency(totals.grandTotal)}</strong>
-          <span>更新 ${formatDateTime(invoice.updatedAt)}</span>
+          <span>${invoice.isClosed ? `結案 ${formatDateTime(invoice.closedAt)}` : `更新 ${formatDateTime(invoice.updatedAt)}`}</span>
         </div>
         <div class="invoice-card-actions">
           <button class="secondary-button" type="button" data-open-invoice="${invoice.id}">編輯</button>
@@ -732,8 +819,10 @@ function renderInvoiceList() {
           <button class="secondary-button danger-button" type="button" data-delete-invoice="${invoice.id}">刪除</button>
         </div>
       `;
-      invoiceList.appendChild(card);
-    });
+    group.appendChild(card);
+  });
+
+  invoiceList.appendChild(group);
 }
 
 function renderNotices() {
@@ -775,8 +864,19 @@ function renderForm() {
     }
   });
   updateConditionalFields();
+  updateCloseInvoiceButton();
   renderDetails();
   renderSummary();
+}
+
+function updateCloseInvoiceButton() {
+  if (!state.activeInvoice?.isClosed) {
+    closeInvoiceButton.textContent = "結案";
+    closeInvoiceButton.disabled = false;
+    return;
+  }
+  closeInvoiceButton.textContent = "已結案";
+  closeInvoiceButton.disabled = true;
 }
 
 function renderDetails() {
@@ -1837,6 +1937,7 @@ leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
 stayOnFormButton.addEventListener("click", closeLeaveConfirm);
 cancelLeaveButton.addEventListener("click", closeLeaveConfirm);
 deleteInvoiceButton.addEventListener("click", () => deleteInvoice(state.activeInvoiceId, { fromForm: true }));
+closeInvoiceButton.addEventListener("click", requestCloseInvoice);
 copySelectedDetailsButton.addEventListener("click", copySelectedDetails);
 deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
 selectAllDetails.addEventListener("change", () => {
@@ -1850,9 +1951,17 @@ selectAllDetails.addEventListener("change", () => {
 confirmDeleteButton.addEventListener("click", confirmDeleteAction);
 cancelDeleteButton.addEventListener("click", closeDeleteConfirm);
 cancelDeleteActionButton.addEventListener("click", closeDeleteConfirm);
+confirmCloseButton.addEventListener("click", confirmCloseAction);
+cancelCloseButton.addEventListener("click", closeCloseConfirm);
+cancelCloseActionButton.addEventListener("click", closeCloseConfirm);
 toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
 saveInvoiceButton.addEventListener("click", () => saveActiveInvoice());
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
+
+invoiceSearchInput.addEventListener("input", () => {
+  state.invoiceSearchQuery = invoiceSearchInput.value;
+  renderInvoiceList();
+});
 
 invoiceList.addEventListener("click", (event) => {
   const openButton = event.target.closest("[data-open-invoice]");
@@ -2021,6 +2130,7 @@ document.addEventListener("keydown", (event) => {
     closeAccountPanel();
     closeLeaveConfirm();
     closeDeleteConfirm();
+    closeCloseConfirm();
   }
 });
 
