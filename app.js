@@ -819,90 +819,448 @@ function findAccountByIdentifier(value) {
   return state.accounts.find((account) => account.email === email || account.memberCode.toUpperCase() === memberCode);
 }
 
-function exportCsv(type) {
+function exportPdf(type) {
   syncInfoFromInputs();
-  const { rows, filename } = buildExportRows(type, state.activeInvoice);
-  const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\n");
-  downloadFile(filename, `\ufeff${csv}`, "text/csv;charset=utf-8");
-}
+  const documentData = buildPdfDocument(type, state.activeInvoice);
+  const printWindow = window.open("", "_blank", "width=980,height=1200");
 
-function buildExportRows(type, invoice) {
-  const totals = summaryTotals(invoice);
-  const isInternal = type === "internal";
-  const title = isInternal ? "匯出自留存表單(會計端)" : "匯出請款表單(業主端)";
-  const info = invoice.info;
-  const rows = [
-    [title],
-    ["工程名稱", info.projectName],
-    ["業主/上游包商", info.clientName],
-    ["承攬廠商", info.contractorName],
-    ["請款單號", info.invoiceNo],
-    ["請款期間", info.billingPeriod],
-    ["付款條件", info.paymentTerms],
-    [],
-    isInternal
-      ? ["序號", "明細表單", "單位", "數量", "請款單價", "成本單價", "請款金額", "成本", "利潤", "毛利率"]
-      : ["序號", "明細表單", "單位", "數量", "單價", "請款金額"]
-  ];
-
-  invoice.details.forEach((detail, index) => {
-    const detailSummary = detailTotals(detail);
-    rows.push(
-      isInternal
-        ? [
-            index + 1,
-            detail.name,
-            detail.unit,
-            detail.qty,
-            detail.price,
-            detail.cost,
-            Math.round(detailSummary.amount),
-            Math.round(detailSummary.costAmount),
-            Math.round(detailSummary.profit),
-            formatPercent(detailSummary.margin)
-          ]
-        : [
-            index + 1,
-            detail.name,
-            detail.unit,
-            detail.qty,
-            detail.price,
-            Math.round(detailSummary.amount)
-          ]
-    );
-  });
-
-  rows.push(
-    [],
-    ["請款小計", Math.round(totals.subtotal)],
-    ["折扣費用", Math.round(totals.discountTotal)],
-    ["折扣後小計", Math.round(totals.netSubtotal)],
-    [`營業稅 ${info.taxRate}%`, Math.round(totals.taxTotal)],
-    [`保留款 ${info.retentionRate}%`, Math.round(totals.retentionTotal)],
-    ["本期應收", Math.round(totals.grandTotal)]
-  );
-
-  if (isInternal) {
-    rows.push(
-      ["內部成本", Math.round(totals.costTotal)],
-      ["預估利潤", Math.round(totals.profitTotal)],
-      ["平均毛利率", formatPercent(totals.marginTotal)]
-    );
+  if (!printWindow) {
+    setSaveStatus("瀏覽器封鎖了 PDF 視窗，請允許彈出式視窗後再試一次。");
+    return;
   }
 
-  const filename = `${sanitizeFilename(info.invoiceNo || "工程請款")}-${isInternal ? "會計自留存表單" : "業主請款表單"}.csv`;
-  return { rows, filename };
+  printWindow.document.open();
+  printWindow.document.write(documentData.html);
+  printWindow.document.close();
+  printWindow.focus();
+  setSaveStatus("PDF 文件已開啟，請在列印視窗選擇儲存為 PDF。");
 }
 
-function downloadFile(filename, content, type) {
-  const blob = new Blob([content], { type });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  URL.revokeObjectURL(link.href);
-  link.remove();
+function buildPdfDocument(type, invoice) {
+  const isInternal = type === "internal";
+  const info = invoice.info;
+  const title = isInternal ? "工程請款明細表" : "工程請款單";
+  const filename = `${sanitizeFilename(info.invoiceNo || "工程請款")}-${isInternal ? "自留存" : "請款"}.pdf`;
+  const body = isInternal ? buildInternalPdfBody(invoice) : buildClientPdfBody(invoice);
+
+  return {
+    filename,
+    html: `<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <title>${escapeHtml(filename)}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 14mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #152033;
+        background: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .document {
+        width: 100%;
+      }
+
+      .doc-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: end;
+        padding-bottom: 14px;
+        border-bottom: 2px solid #1f3e66;
+      }
+
+      .doc-title {
+        margin: 0;
+        color: #13294b;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .doc-subtitle {
+        margin-top: 5px;
+        color: #5f6d80;
+        font-size: 12px;
+      }
+
+      .doc-no {
+        display: grid;
+        gap: 4px;
+        min-width: 190px;
+        padding: 10px 12px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        text-align: right;
+      }
+
+      .doc-no span {
+        color: #64748b;
+        font-size: 11px;
+      }
+
+      .doc-no strong {
+        color: #13294b;
+        font-size: 14px;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        border: 1px solid #cbd5e1;
+        border-bottom: 0;
+        margin-top: 14px;
+      }
+
+      .meta-item {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        min-height: 34px;
+        border-bottom: 1px solid #cbd5e1;
+      }
+
+      .meta-item:nth-child(odd) {
+        border-right: 1px solid #cbd5e1;
+      }
+
+      .meta-label {
+        display: flex;
+        align-items: center;
+        padding: 7px 9px;
+        background: #eef3f8;
+        color: #475569;
+        font-weight: 700;
+      }
+
+      .meta-value {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        padding: 7px 10px;
+        font-weight: 650;
+        word-break: break-word;
+      }
+
+      .section-title {
+        margin: 18px 0 8px;
+        color: #13294b;
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        page-break-inside: auto;
+      }
+
+      tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+      }
+
+      th,
+      td {
+        border: 1px solid #cbd5e1;
+        padding: 7px 8px;
+        vertical-align: top;
+      }
+
+      th {
+        background: #13294b;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      td {
+        color: #172033;
+      }
+
+      .index,
+      .unit,
+      .qty,
+      .percent {
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      .amount {
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .summary-wrap {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 16px;
+        align-items: start;
+        margin-top: 14px;
+      }
+
+      .note-box {
+        min-height: 116px;
+        border: 1px solid #cbd5e1;
+      }
+
+      .note-box strong {
+        display: block;
+        padding: 8px 10px;
+        background: #eef3f8;
+        color: #475569;
+      }
+
+      .note-box p {
+        margin: 0;
+        padding: 10px;
+        color: #475569;
+      }
+
+      .summary-table th {
+        background: #eef3f8;
+        color: #475569;
+        text-align: left;
+      }
+
+      .summary-table td:last-child {
+        text-align: right;
+        font-weight: 700;
+      }
+
+      .summary-table .grand th,
+      .summary-table .grand td {
+        background: #e8f0fb;
+        color: #13294b;
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .signatures {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .signature {
+        min-height: 76px;
+        border: 1px solid #cbd5e1;
+        padding: 9px 10px;
+        color: #475569;
+        font-weight: 700;
+      }
+
+      .signature::after {
+        content: "";
+        display: block;
+        margin-top: 34px;
+        border-top: 1px solid #94a3b8;
+      }
+
+      .print-actions {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin: 0 0 14px;
+        padding: 10px;
+        background: #ffffff;
+        border-bottom: 1px solid #d7dee8;
+      }
+
+      .print-actions button {
+        min-height: 36px;
+        border: 1px solid #b9c6d8;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #13294b;
+        padding: 0 12px;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .print-actions button:first-child {
+        border-color: #2357a6;
+        background: #2357a6;
+        color: #ffffff;
+      }
+
+      @media print {
+        .print-actions {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="print-actions">
+      <button type="button" onclick="window.print()">儲存 PDF</button>
+      <button type="button" onclick="window.close()">關閉</button>
+    </div>
+    <main class="document">
+      <header class="doc-header">
+        <div>
+          <h1 class="doc-title">${escapeHtml(title)}</h1>
+          <div class="doc-subtitle">立表日期：${escapeHtml(formatFullDate(new Date()))}</div>
+        </div>
+        <div class="doc-no">
+          <span>請款單號</span>
+          <strong>${escapeHtml(info.invoiceNo || "-")}</strong>
+        </div>
+      </header>
+      ${buildPdfMeta(info)}
+      ${body}
+    </main>
+    <script>
+      window.addEventListener("load", () => {
+        window.setTimeout(() => window.print(), 250);
+      });
+    </script>
+  </body>
+</html>`
+  };
+}
+
+function buildPdfMeta(info) {
+  return `<section class="meta-grid" aria-label="工程資料">
+    ${buildPdfMetaItem("工程名稱", info.projectName)}
+    ${buildPdfMetaItem("業主/上游包商", info.clientName)}
+    ${buildPdfMetaItem("承攬廠商", info.contractorName)}
+    ${buildPdfMetaItem("請款期間", info.billingPeriod)}
+    ${buildPdfMetaItem("付款條件", info.paymentTerms)}
+    ${buildPdfMetaItem("稅率 / 保留款", `${formatRate(info.taxRate)} / ${formatRate(info.retentionRate)}`)}
+  </section>`;
+}
+
+function buildPdfMetaItem(label, value) {
+  return `<div class="meta-item">
+    <div class="meta-label">${escapeHtml(label)}</div>
+    <div class="meta-value">${escapeHtml(value || "-")}</div>
+  </div>`;
+}
+
+function buildClientPdfBody(invoice) {
+  const totals = summaryTotals(invoice);
+  const rows = invoice.details.map((detail, index) => {
+    const detailSummary = detailTotals(detail);
+    return `<tr>
+      <td class="index">${index + 1}</td>
+      <td>${escapeHtml(detail.name || "-")}</td>
+      <td class="unit">${escapeHtml(detail.unit || "-")}</td>
+      <td class="qty">${formatQuantity(detail.qty)}</td>
+      <td class="amount">${formatCurrency(detail.price)}</td>
+      <td class="amount">${formatCurrency(detailSummary.amount)}</td>
+    </tr>`;
+  }).join("");
+
+  return `<section>
+    <h2 class="section-title">請款明細</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 42px;">序號</th>
+          <th>明細表單</th>
+          <th style="width: 60px;">單位</th>
+          <th style="width: 68px;">數量</th>
+          <th style="width: 108px;">單價</th>
+          <th style="width: 118px;">金額</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${buildPdfSummary(totals, invoice.info, false)}
+    ${buildPdfSignatures(["承辦", "覆核", "核准"])}
+  </section>`;
+}
+
+function buildInternalPdfBody(invoice) {
+  const totals = summaryTotals(invoice);
+  const rows = invoice.details.map((detail, index) => {
+    const detailSummary = detailTotals(detail);
+    return `<tr>
+      <td class="index">${index + 1}</td>
+      <td>${escapeHtml(detail.name || "-")}</td>
+      <td class="unit">${escapeHtml(detail.unit || "-")}</td>
+      <td class="qty">${formatQuantity(detail.qty)}</td>
+      <td class="amount">${formatCurrency(detail.price)}</td>
+      <td class="amount">${formatCurrency(detail.cost)}</td>
+      <td class="amount">${formatCurrency(detailSummary.amount)}</td>
+      <td class="amount">${formatCurrency(detailSummary.costAmount)}</td>
+      <td class="amount">${formatCurrency(detailSummary.profit)}</td>
+      <td class="percent">${formatPercent(detailSummary.margin)}</td>
+    </tr>`;
+  }).join("");
+
+  return `<section>
+    <h2 class="section-title">請款明細</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 36px;">序號</th>
+          <th>明細表單</th>
+          <th style="width: 48px;">單位</th>
+          <th style="width: 56px;">數量</th>
+          <th style="width: 88px;">請款單價</th>
+          <th style="width: 88px;">成本單價</th>
+          <th style="width: 98px;">請款金額</th>
+          <th style="width: 88px;">成本</th>
+          <th style="width: 88px;">利潤</th>
+          <th style="width: 62px;">毛利率</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${buildPdfSummary(totals, invoice.info, true)}
+    ${buildPdfSignatures(["製表", "覆核", "核准"])}
+  </section>`;
+}
+
+function buildPdfSummary(totals, info, includeInternal) {
+  const internalRows = includeInternal
+    ? `<tr><th>成本合計</th><td>${formatCurrency(totals.costTotal)}</td></tr>
+       <tr><th>預估利潤</th><td>${formatCurrency(totals.profitTotal)}</td></tr>
+       <tr><th>平均毛利率</th><td>${formatPercent(totals.marginTotal)}</td></tr>`
+    : "";
+
+  return `<section class="summary-wrap">
+    <div class="note-box">
+      <strong>備註</strong>
+      <p>本文件依工程明細及約定條件彙整，金額以新台幣計算。</p>
+    </div>
+    <table class="summary-table">
+      <tbody>
+        <tr><th>請款小計</th><td>${formatCurrency(totals.subtotal)}</td></tr>
+        <tr><th>折扣費用</th><td>${formatCurrency(totals.discountTotal)}</td></tr>
+        <tr><th>折扣後小計</th><td>${formatCurrency(totals.netSubtotal)}</td></tr>
+        <tr><th>營業稅 ${escapeHtml(formatRate(info.taxRate))}</th><td>${formatCurrency(totals.taxTotal)}</td></tr>
+        <tr><th>保留款 ${escapeHtml(formatRate(info.retentionRate))}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>
+        <tr class="grand"><th>本期應收</th><td>${formatCurrency(totals.grandTotal)}</td></tr>
+        ${internalRows}
+      </tbody>
+    </table>
+  </section>`;
+}
+
+function buildPdfSignatures(labels) {
+  return `<section class="signatures">
+    ${labels.map((label) => `<div class="signature">${escapeHtml(label)}</div>`).join("")}
+  </section>`;
 }
 
 function openAccountPanel() {
@@ -1023,8 +1381,26 @@ function formatCurrency(value) {
   return currencyFormatter.format(Math.round(value));
 }
 
+function formatQuantity(value) {
+  return numberFormatter.format(toNumber(value));
+}
+
 function formatPercent(value) {
   return `${numberFormatter.format(value * 100)}%`;
+}
+
+function formatRate(value) {
+  return `${numberFormatter.format(toNumber(value))}%`;
+}
+
+function formatFullDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
 }
 
 function formatDateTime(value) {
@@ -1036,14 +1412,6 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   });
-}
-
-function escapeCsv(value) {
-  const stringValue = String(value ?? "");
-  if (/[",\n]/.test(stringValue)) {
-    return `"${stringValue.replaceAll('"', '""')}"`;
-  }
-  return stringValue;
 }
 
 function escapeHtml(value) {
@@ -1213,7 +1581,7 @@ exportButton.addEventListener("click", () => {
 exportMenu.addEventListener("click", (event) => {
   const button = event.target.closest("[data-export]");
   if (!button) return;
-  exportCsv(button.dataset.export);
+  exportPdf(button.dataset.export);
   closeExportMenu();
 });
 
