@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ez2Earn 工程請款系統</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section id="authView" class="auth-view view">
+        <div class="auth-panel">
+          <div class="auth-brand">
+            <p class="eyebrow">Ez2Earn Secure Client Portal</p>
+            <h1>工程請款系統</h1>
+            <p>使用 Email 帳號登入，每位成員具備獨立會員編碼與加密資料庫。</p>
+          </div>
+
+          <div class="auth-card">
+            <div class="auth-tabs" role="tablist" aria-label="登入或註冊">
+              <button class="auth-tab is-active" id="loginTab" type="button">登入</button>
+              <button class="auth-tab" id="registerTab" type="button">註冊</button>
+            </div>
+
+            <form id="loginForm" class="auth-form">
+              <label>
+                Email
+                <input id="loginEmail" type="email" autocomplete="email" required>
+              </label>
+              <label>
+                密碼
+                <input id="loginPassword" type="password" autocomplete="current-password" required>
+              </label>
+              <button class="primary-button" type="submit">登入</button>
+            </form>
+
+            <form id="registerForm" class="auth-form is-hidden">
+              <label>
+                Email
+                <input id="registerEmail" type="email" autocomplete="email" required>
+              </label>
+              <label>
+                暱稱
+                <input id="registerNickname" type="text" autocomplete="nickname" required>
+              </label>
+              <label>
+                密碼
+                <input id="registerPassword" type="password" autocomplete="new-password" required>
+              </label>
+              <label>
+                確認密碼
+                <input id="registerPasswordConfirm" type="password" autocomplete="new-password" required>
+              </label>
+              <p class="password-rule">密碼需包含英文大寫、小寫、數字與符號，且至少 8 碼。</p>
+              <button class="primary-button" type="submit">建立帳號</button>
+            </form>
+
+            <div id="authMessage" class="form-message" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="listView" class="view is-hidden">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Ez2Earn</p>
+            <h1>請款單列表</h1>
+            <p class="user-line" id="currentUserLine"></p>
+          </div>
+          <div class="actions">
+            <button class="secondary-button" id="accountButton" type="button">帳號管理</button>
+            <button class="secondary-button" id="logoutButton" type="button">登出</button>
+            <button class="primary-button" id="newInvoiceButton" type="button">新增請款單</button>
+          </div>
+        </header>
+
+        <section class="notice-panel" aria-label="提示通知">
+          <div class="list-heading">
+            <h2>提示欄位</h2>
+            <p id="noticeCount">0 則</p>
+          </div>
+          <div id="noticeList" class="notice-list"></div>
+        </section>
+
+        <section class="list-panel" aria-label="請款單列表">
+          <div class="list-heading">
+            <h2>已儲存請款單</h2>
+            <p id="invoiceCount">0 張</p>
+          </div>
+          <div id="invoiceList" class="invoice-list"></div>
+        </section>
+      </section>
+
+      <section id="formView" class="view is-hidden">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Ez2Earn</p>
+            <h1>工程請款表單</h1>
+            <p class="user-line" id="formUserLine"></p>
+          </div>
+          <div class="actions">
+            <button class="secondary-button" id="backToListButton" type="button">返回列表</button>
+            <button class="secondary-button" id="saveInvoiceButton" type="button">儲存</button>
+            <div class="export-wrap">
+              <button class="primary-button" id="exportButton" type="button" aria-haspopup="true" aria-expanded="false">
+                匯出
+                <span aria-hidden="true">▾</span>
+              </button>
+              <div class="export-menu" id="exportMenu" role="menu" aria-label="匯出表單">
+                <button type="button" data-export="internal" role="menuitem">
+                  匯出自留存表單(會計端)
+                </button>
+                <button type="button" data-export="client" role="menuitem">
+                  匯出請款表單(業主端)
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
+
+        <section class="invite-panel" aria-label="邀請會員">
+          <div>
+            <h2>邀請會員</h2>
+            <p>輸入對方 Email 或會員編號，對方會在提示欄位收到通知。</p>
+          </div>
+          <form id="inviteForm" class="invite-form">
+            <input id="inviteTarget" type="text" placeholder="Email / 會員編號">
+            <button class="secondary-button" type="submit">送出邀請</button>
+          </form>
+          <div id="inviteMessage" class="form-message" role="status" aria-live="polite"></div>
+        </section>
+
+        <details class="fold-panel" open>
+          <summary>
+            <span>工程基本資料</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <section class="project-panel" aria-label="工程基本資料">
+            <label>
+              工程名稱
+              <input id="projectName" type="text">
+            </label>
+            <label>
+              業主/上游包商
+              <input id="clientName" type="text">
+            </label>
+            <label>
+              承攬廠商
+              <input id="contractorName" type="text">
+            </label>
+            <label>
+              請款單號
+              <input id="invoiceNo" type="text">
+            </label>
+            <label>
+              請款期間
+              <input id="billingPeriod" type="text">
+            </label>
+            <label>
+              稅率(%)
+              <input id="taxRate" type="number" min="0" step="0.1">
+            </label>
+            <label>
+              保留款(%)
+              <input id="retentionRate" type="number" min="0" step="0.1">
+            </label>
+            <label>
+              折扣費用
+              <input id="discountAmount" type="number" min="0" step="1">
+            </label>
+            <label>
+              付款條件
+              <input id="paymentTerms" type="text">
+            </label>
+          </section>
+        </details>
+
+        <details class="fold-panel" open>
+          <summary>
+            <span>請款摘要</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <aside class="summary-panel" aria-label="請款摘要">
+            <div>
+              <span>請款小計</span>
+              <strong id="subtotal">$0</strong>
+            </div>
+            <div>
+              <span>折扣費用</span>
+              <strong id="discountTotal">$0</strong>
+            </div>
+            <div>
+              <span>折扣後小計</span>
+              <strong id="netSubtotal">$0</strong>
+            </div>
+            <div>
+              <span>稅額</span>
+              <strong id="taxTotal">$0</strong>
+            </div>
+            <div>
+              <span>保留款</span>
+              <strong id="retentionTotal">$0</strong>
+            </div>
+            <div class="grand-total">
+              <span>本期應收</span>
+              <strong id="grandTotal">$0</strong>
+            </div>
+            <div>
+              <span>內部成本</span>
+              <strong id="costTotal">$0</strong>
+            </div>
+            <div>
+              <span>預估利潤</span>
+              <strong id="profitTotal">$0</strong>
+            </div>
+            <div>
+              <span>平均毛利率</span>
+              <strong id="marginTotal">0%</strong>
+            </div>
+          </aside>
+        </details>
+
+        <section class="items-panel" aria-label="明細表單">
+          <div class="items-heading">
+            <div>
+              <h2>明細表單</h2>
+              <p>拖曳左側把手可調整順序；業主端匯出會隱藏成本、利潤與毛利率。</p>
+            </div>
+            <button class="secondary-button" id="addDetailButton" type="button">新增明細</button>
+          </div>
+          <div class="detail-header" aria-hidden="true">
+            <span></span>
+            <span>#</span>
+            <span>明細表單</span>
+            <span>單位</span>
+            <span>數量</span>
+            <span>請款單價</span>
+            <span>成本單價</span>
+            <span>請款金額</span>
+            <span>成本</span>
+            <span>利潤</span>
+            <span></span>
+          </div>
+          <div id="detailsContainer" class="details-list"></div>
+        </section>
+      </section>
+
+      <div id="accountPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+        <div class="modal-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Account</p>
+              <h2 id="accountTitle">帳號管理</h2>
+            </div>
+            <button class="icon-close" id="closeAccountButton" type="button" aria-label="關閉">×</button>
+          </div>
+
+          <section class="account-grid">
+            <div>
+              <span>Email</span>
+              <strong id="accountEmail"></strong>
+            </div>
+            <div>
+              <span>會員編碼</span>
+              <strong id="accountMemberCode"></strong>
+            </div>
+            <div>
+              <span>權限</span>
+              <strong id="accountRole"></strong>
+            </div>
+          </section>
+
+          <form id="accountForm" class="account-form">
+            <label>
+              暱稱
+              <input id="accountNickname" type="text">
+            </label>
+            <label>
+              新密碼
+              <input id="accountNewPassword" type="password" autocomplete="new-password">
+            </label>
+            <label>
+              確認新密碼
+              <input id="accountNewPasswordConfirm" type="password" autocomplete="new-password">
+            </label>
+            <p class="password-rule">若要變更密碼，需包含英文大寫、小寫、數字與符號，且至少 8 碼。</p>
+            <button class="primary-button" type="submit">更新帳號</button>
+          </form>
+          <div id="accountMessage" class="form-message" role="status" aria-live="polite"></div>
+
+          <section id="adminPanel" class="admin-panel is-hidden">
+            <div class="list-heading">
+              <h2>最高權限管理</h2>
+              <p id="accountCount">0 個帳號</p>
+            </div>
+            <div id="adminAccountList" class="admin-account-list"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
