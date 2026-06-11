@@ -112,7 +112,7 @@
 
         <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
 
-        <details class="fold-panel">
+        <details class="fold-panel" open>
           <summary>
             <span>邀請會員加入編輯</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -130,7 +130,7 @@
           </section>
         </details>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel">
           <summary>
             <span>工程基本資料</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -201,7 +201,7 @@
               <input id="isTaxIncluded" type="checkbox">
               <span>是否含稅</span>
             </label>
-            <label id="taxRateWrap" class="is-hidden">
+            <label id="taxRateWrap">
               稅率(%)
               <input id="taxRate" type="number" min="0" step="0.1">
             </label>
@@ -209,7 +209,7 @@
               <input id="hasRetention" type="checkbox">
               <span>是否有保留款</span>
             </label>
-            <label id="retentionRateWrap" class="is-hidden">
+            <label id="retentionRateWrap">
               保留款(%)
               <input id="retentionRate" type="number" min="0" step="0.1">
             </label>
@@ -217,7 +217,7 @@
               <input id="hasDiscount" type="checkbox">
               <span>是否有折扣費用</span>
             </label>
-            <label id="discountAmountWrap" class="is-hidden">
+            <label id="discountAmountWrap">
               折扣費用
               <input id="discountAmount" type="number" min="0" step="1">
             </label>
@@ -277,7 +277,7 @@
           </section>
         </details>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel">
           <summary>
             <span>備註</span>
             <span class="fold-icon" aria-hidden="true"></span>

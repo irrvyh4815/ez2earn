@@ -119,7 +119,9 @@ const customPaymentMethodWrap = document.querySelector("#customPaymentMethodWrap
 const taxRateWrap = document.querySelector("#taxRateWrap");
 const taxRateInput = document.querySelector("#taxRate");
 const retentionRateWrap = document.querySelector("#retentionRateWrap");
+const retentionRateInput = document.querySelector("#retentionRate");
 const discountAmountWrap = document.querySelector("#discountAmountWrap");
+const discountAmountInput = document.querySelector("#discountAmount");
 const toggleFormulaButton = document.querySelector("#toggleFormulaButton");
 const formulaPanel = document.querySelector("#formulaPanel");
 const formulaList = document.querySelector("#formulaList");
@@ -852,10 +854,15 @@ function updateConditionalFields() {
   const info = state.activeInvoice?.info || {};
   const paymentMethod = document.querySelector("#paymentMethod")?.value || info.paymentMethod;
   customPaymentMethodWrap.classList.toggle("is-hidden", paymentMethod !== "自訂");
-  taxRateWrap.classList.toggle("is-hidden", !Boolean(info.isTaxIncluded));
-  retentionRateWrap.classList.toggle("is-hidden", !Boolean(info.hasRetention));
-  discountAmountWrap.classList.toggle("is-hidden", !Boolean(info.hasDiscount));
-  taxRateInput.disabled = !Boolean(info.isTaxIncluded);
+  const taxEnabled = Boolean(info.isTaxIncluded);
+  const retentionEnabled = Boolean(info.hasRetention);
+  const discountEnabled = Boolean(info.hasDiscount);
+  taxRateWrap.classList.toggle("is-disabled-field", !taxEnabled);
+  retentionRateWrap.classList.toggle("is-disabled-field", !retentionEnabled);
+  discountAmountWrap.classList.toggle("is-disabled-field", !discountEnabled);
+  taxRateInput.disabled = !taxEnabled;
+  retentionRateInput.disabled = !retentionEnabled;
+  discountAmountInput.disabled = !discountEnabled;
 }
 
 function getPaymentMethodLabel(info) {

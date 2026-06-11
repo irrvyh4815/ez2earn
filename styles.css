@@ -666,6 +666,15 @@ textarea {
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
+input:disabled,
+select:disabled,
+textarea:disabled {
+  border-color: #d9e1ec;
+  background: #eef2f6;
+  color: #8b98aa;
+  cursor: not-allowed;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -690,9 +699,23 @@ textarea {
   min-height: 65px;
 }
 
-.checkbox-field input {
+input[type="checkbox"],
+.checkbox-field input,
+.detail-select {
   width: 18px;
+  height: 18px;
+  min-width: 18px;
   min-height: 18px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.is-disabled-field {
+  color: #8b98aa;
+}
+
+.is-disabled-field input {
+  background: #eef2f6;
 }
 
 .is-hidden {
@@ -801,7 +824,7 @@ textarea {
   border-bottom: 1px solid var(--line);
   background: #eef3f8;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -850,7 +873,7 @@ textarea {
 
 .drag-handle {
   color: var(--muted);
-  font-size: 18px;
+  font-size: 16px;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -862,7 +885,7 @@ textarea {
 
 .delete-row {
   color: var(--danger);
-  font-size: 20px;
+  font-size: 16px;
 }
 
 .drag-handle:hover {
@@ -877,6 +900,7 @@ textarea {
 
 .detail-index {
   color: var(--muted);
+  font-size: 13px;
   font-weight: 800;
   text-align: center;
 }
@@ -887,23 +911,22 @@ textarea {
 
 .detail-row label {
   min-width: 0;
+  font-size: 13px;
 }
 
-.detail-row input {
+.detail-row label input {
   width: 100%;
   min-height: 38px;
+  font-size: 13px;
 }
 
 .detail-select {
-  width: 18px;
-  min-height: 18px;
   justify-self: center;
-  padding: 0;
 }
 
 .detail-row output {
   color: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   text-align: right;
