@@ -92,6 +92,7 @@
           <div class="actions">
             <button class="secondary-button" id="backToListButton" type="button">返回列表</button>
             <button class="secondary-button" id="saveInvoiceButton" type="button">儲存</button>
+            <button class="secondary-button danger-button" id="deleteInvoiceButton" type="button">刪除</button>
             <div class="export-wrap">
               <button class="primary-button" id="exportButton" type="button" aria-haspopup="true" aria-expanded="false">
                 匯出
@@ -111,17 +112,23 @@
 
         <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
 
-        <section class="invite-panel" aria-label="邀請會員">
-          <div>
-            <h2>邀請會員</h2>
-            <p>輸入對方 Email 或會員編號，對方會在提示欄位收到通知。</p>
-          </div>
-          <form id="inviteForm" class="invite-form">
-            <input id="inviteTarget" type="text" placeholder="Email / 會員編號">
-            <button class="secondary-button" type="submit">送出邀請</button>
-          </form>
-          <div id="inviteMessage" class="form-message" role="status" aria-live="polite"></div>
-        </section>
+        <details class="fold-panel" open>
+          <summary>
+            <span>邀請會員</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <section class="invite-panel" aria-label="邀請會員">
+            <div>
+              <h2>邀請會員</h2>
+              <p>輸入對方 Email 或會員編號，對方會在提示欄位收到通知。</p>
+            </div>
+            <form id="inviteForm" class="invite-form">
+              <input id="inviteTarget" type="text" placeholder="Email / 會員編號">
+              <button class="secondary-button" type="submit">送出邀請</button>
+            </form>
+            <div id="inviteMessage" class="form-message" role="status" aria-live="polite"></div>
+          </section>
+        </details>
 
         <details class="fold-panel" open>
           <summary>
@@ -138,8 +145,32 @@
               <input id="clientName" type="text">
             </label>
             <label>
+              業主統一編號
+              <input id="clientTaxId" type="text" inputmode="numeric">
+            </label>
+            <label>
+              業主方聯絡人
+              <input id="clientContact" type="text">
+            </label>
+            <label>
+              業主方電話
+              <input id="clientPhone" type="tel">
+            </label>
+            <label>
               承攬廠商
               <input id="contractorName" type="text">
+            </label>
+            <label>
+              承攬商統一編號
+              <input id="contractorTaxId" type="text" inputmode="numeric">
+            </label>
+            <label>
+              承攬方聯絡人
+              <input id="contractorContact" type="text">
+            </label>
+            <label>
+              承攬方電話
+              <input id="contractorPhone" type="tel">
             </label>
             <label>
               請款單號
@@ -148,6 +179,23 @@
             <label>
               請款期間
               <input id="billingPeriod" type="text">
+            </label>
+            <label>
+              付款方式
+              <select id="paymentMethod">
+                <option value="轉帳">轉帳</option>
+                <option value="現金">現金</option>
+                <option value="支票">支票</option>
+                <option value="自訂">自訂</option>
+              </select>
+            </label>
+            <label id="customPaymentMethodWrap" class="is-hidden">
+              自訂付款方式
+              <input id="customPaymentMethod" type="text">
+            </label>
+            <label class="checkbox-field">
+              <input id="isTaxIncluded" type="checkbox">
+              <span>是否含稅</span>
             </label>
             <label>
               稅率(%)
@@ -213,15 +261,40 @@
           </aside>
         </details>
 
-        <section class="items-panel" aria-label="明細表單">
+        <details class="fold-panel" open>
+          <summary>
+            <span>備註</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <section class="remarks-panel" aria-label="備註">
+            <label>
+              備註
+              <textarea id="remarks" rows="4" placeholder="可輸入工程說明、付款提醒或請款備註"></textarea>
+            </label>
+          </section>
+        </details>
+
+        <details class="fold-panel" open>
+          <summary>
+            <span>明細表單</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <section class="items-panel" aria-label="明細表單">
           <div class="items-heading">
             <div>
               <h2>明細表單</h2>
               <p>拖曳左側把手可調整順序；對外請款 PDF 會隱藏成本、利潤與毛利率。</p>
             </div>
-            <button class="secondary-button" id="addDetailButton" type="button">新增明細</button>
+            <div class="inline-actions">
+              <button class="secondary-button" id="copySelectedDetailsButton" type="button" disabled>複製勾選</button>
+              <button class="secondary-button danger-button" id="deleteSelectedDetailsButton" type="button" disabled>刪除勾選</button>
+              <button class="secondary-button" id="addDetailButton" type="button">新增明細</button>
+            </div>
           </div>
           <div class="detail-header" aria-hidden="true">
+            <span>
+              <input id="selectAllDetails" type="checkbox" aria-label="全選明細">
+            </span>
             <span></span>
             <span>#</span>
             <span>明細表單</span>
@@ -235,7 +308,8 @@
             <span></span>
           </div>
           <div id="detailsContainer" class="details-list"></div>
-        </section>
+          </section>
+        </details>
       </section>
 
       <aside id="sessionSidebar" class="session-sidebar is-hidden" aria-label="工作側欄">
@@ -273,6 +347,23 @@
             <button class="primary-button" id="saveAndLeaveButton" type="button">儲存後離開</button>
             <button class="secondary-button" id="leaveWithoutSaveButton" type="button">不儲存離開</button>
             <button class="secondary-button" id="stayOnFormButton" type="button">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="deleteConfirmPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="deleteConfirmTitle">
+        <div class="modal-card confirm-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Delete</p>
+              <h2 id="deleteConfirmTitle">確認刪除</h2>
+            </div>
+            <button class="icon-close" id="cancelDeleteButton" type="button" aria-label="取消">×</button>
+          </div>
+          <p class="confirm-text" id="deleteConfirmText">刪除後無法復原。</p>
+          <div class="confirm-actions">
+            <button class="secondary-button" id="cancelDeleteActionButton" type="button">取消</button>
+            <button class="primary-button danger-primary" id="confirmDeleteButton" type="button">確認刪除</button>
           </div>
         </div>
       </div>

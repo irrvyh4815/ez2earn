@@ -8,25 +8,45 @@ const PBKDF2_ITERATIONS = 150000;
 const defaultInfo = {
   projectName: "A 棟機電追加工程",
   clientName: "宏盛營造股份有限公司",
+  clientTaxId: "",
+  clientContact: "",
+  clientPhone: "",
   contractorName: "Ez2Earn 工程行",
+  contractorTaxId: "",
+  contractorContact: "",
+  contractorPhone: "",
   invoiceNo: "INV-2026-0610",
   billingPeriod: "2026/06/01 - 2026/06/10",
+  paymentMethod: "轉帳",
+  customPaymentMethod: "",
+  isTaxIncluded: true,
   taxRate: 5,
   retentionRate: 0,
   discountAmount: 0,
-  paymentTerms: "月結 30 天"
+  paymentTerms: "月結 30 天",
+  remarks: ""
 };
 
 const infoFields = [
   "projectName",
   "clientName",
+  "clientTaxId",
+  "clientContact",
+  "clientPhone",
   "contractorName",
+  "contractorTaxId",
+  "contractorContact",
+  "contractorPhone",
   "invoiceNo",
   "billingPeriod",
+  "paymentMethod",
+  "customPaymentMethod",
+  "isTaxIncluded",
   "taxRate",
   "retentionRate",
   "discountAmount",
-  "paymentTerms"
+  "paymentTerms",
+  "remarks"
 ];
 
 const state = {
@@ -38,6 +58,8 @@ const state = {
   activeInvoiceId: null,
   activeInvoice: null,
   isInvoiceDirty: false,
+  selectedDetailIds: new Set(),
+  pendingDeleteAction: null,
   draggedDetailId: null,
   pointerDragId: null,
   pointerDropId: null
@@ -85,6 +107,17 @@ const saveAndLeaveButton = document.querySelector("#saveAndLeaveButton");
 const leaveWithoutSaveButton = document.querySelector("#leaveWithoutSaveButton");
 const stayOnFormButton = document.querySelector("#stayOnFormButton");
 const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
+const deleteInvoiceButton = document.querySelector("#deleteInvoiceButton");
+const selectAllDetails = document.querySelector("#selectAllDetails");
+const copySelectedDetailsButton = document.querySelector("#copySelectedDetailsButton");
+const deleteSelectedDetailsButton = document.querySelector("#deleteSelectedDetailsButton");
+const customPaymentMethodWrap = document.querySelector("#customPaymentMethodWrap");
+const taxRateInput = document.querySelector("#taxRate");
+const deleteConfirmPanel = document.querySelector("#deleteConfirmPanel");
+const deleteConfirmText = document.querySelector("#deleteConfirmText");
+const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
+const cancelDeleteButton = document.querySelector("#cancelDeleteButton");
+const cancelDeleteActionButton = document.querySelector("#cancelDeleteActionButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -303,6 +336,7 @@ function showAuth(mode = "login") {
     accountPanel.classList.add("is-hidden");
     detailsContainer.innerHTML = "";
     closeLeaveConfirm();
+    closeDeleteConfirm();
     updateSessionSidebar(false);
     switchAuthTab(mode);
   };
@@ -513,8 +547,10 @@ function showList() {
     state.activeInvoiceId = null;
     state.activeInvoice = null;
     state.isInvoiceDirty = false;
+    state.selectedDetailIds.clear();
     closeExportMenu();
     closeLeaveConfirm();
+    closeDeleteConfirm();
     authView.classList.add("is-hidden");
     listView.classList.remove("is-hidden");
     formView.classList.add("is-hidden");
@@ -538,6 +574,7 @@ function showForm(invoiceId) {
     state.activeInvoice = cloneData(invoice);
     state.activeInvoiceId = invoiceId;
     state.isInvoiceDirty = false;
+    state.selectedDetailIds.clear();
     authView.classList.add("is-hidden");
     listView.classList.add("is-hidden");
     formView.classList.remove("is-hidden");
@@ -573,6 +610,63 @@ async function saveAndReturnToList() {
 function returnToListWithoutSaving() {
   closeLeaveConfirm();
   showList();
+}
+
+async function copyInvoice(invoiceId) {
+  const source = state.invoices.find((invoice) => invoice.id === invoiceId);
+  if (!source) return;
+  const copy = cloneData(source);
+  copy.id = createId("invoice");
+  copy.updatedAt = new Date().toISOString();
+  copy.info = {
+    ...defaultInfo,
+    ...copy.info,
+    invoiceNo: `${copy.info.invoiceNo || "INV"}-COPY`,
+    projectName: `${copy.info.projectName || "未命名工程"} 複製`
+  };
+  copy.details = copy.details.map((detail) => ({ ...detail, id: createId("detail") }));
+  state.invoices.unshift(copy);
+  await persistInvoices();
+  renderInvoiceList();
+  renderLastSaved();
+}
+
+function deleteInvoice(invoiceId, options = {}) {
+  const invoice = state.invoices.find((item) => item.id === invoiceId);
+  if (!invoice) return;
+  const title = invoice.info.projectName || invoice.info.invoiceNo || "此請款單";
+  requestDeleteConfirmation(`確定刪除「${title}」？刪除後無法復原。`, async () => {
+    state.invoices = state.invoices.filter((item) => item.id !== invoiceId);
+    if (state.invoices.length === 0) {
+      state.invoices = [createInvoice()];
+    }
+    await persistInvoices();
+    if (options.fromForm) {
+      showList();
+      return;
+    }
+    renderInvoiceList();
+    renderLastSaved();
+  });
+}
+
+function requestDeleteConfirmation(message, action) {
+  state.pendingDeleteAction = action;
+  deleteConfirmText.textContent = message;
+  deleteConfirmPanel.classList.remove("is-hidden");
+}
+
+function closeDeleteConfirm() {
+  state.pendingDeleteAction = null;
+  deleteConfirmPanel.classList.add("is-hidden");
+}
+
+async function confirmDeleteAction() {
+  const action = state.pendingDeleteAction;
+  closeDeleteConfirm();
+  if (typeof action === "function") {
+    await action();
+  }
 }
 
 function renderCurrentUser() {
@@ -621,6 +715,8 @@ function renderInvoiceList() {
         </div>
         <div class="invoice-card-actions">
           <button class="secondary-button" type="button" data-open-invoice="${invoice.id}">編輯</button>
+          <button class="secondary-button" type="button" data-copy-invoice="${invoice.id}">複製</button>
+          <button class="secondary-button danger-button" type="button" data-delete-invoice="${invoice.id}">刪除</button>
         </div>
       `;
       invoiceList.appendChild(card);
@@ -657,14 +753,25 @@ function renderNotices() {
 
 function renderForm() {
   infoFields.forEach((field) => {
-    document.querySelector(`#${field}`).value = state.activeInvoice.info[field] ?? "";
+    const input = document.querySelector(`#${field}`);
+    if (!input) return;
+    if (input.type === "checkbox") {
+      input.checked = Boolean(state.activeInvoice.info[field]);
+    } else {
+      input.value = state.activeInvoice.info[field] ?? "";
+    }
   });
+  updateConditionalFields();
   renderDetails();
   renderSummary();
 }
 
 function renderDetails() {
   detailsContainer.innerHTML = "";
+  const detailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
+  state.selectedDetailIds.forEach((id) => {
+    if (!detailIds.has(id)) state.selectedDetailIds.delete(id);
+  });
 
   state.activeInvoice.details.forEach((detail, index) => {
     const totals = detailTotals(detail);
@@ -674,6 +781,7 @@ function renderDetails() {
     row.dataset.detailId = detail.id;
     row.dataset.index = String(index);
     row.innerHTML = `
+      <input class="detail-select" data-select-detail="${detail.id}" type="checkbox" aria-label="選取明細 ${index + 1}" ${state.selectedDetailIds.has(detail.id) ? "checked" : ""}>
       <button class="drag-handle" type="button" aria-label="拖曳排序" title="拖曳排序">⋮⋮</button>
       <span class="detail-index">${index + 1}</span>
       <label>
@@ -703,13 +811,23 @@ function renderDetails() {
     `;
     detailsContainer.appendChild(row);
   });
+  updateBulkActionState();
 }
 
 function getProjectInfo() {
   return Object.fromEntries(
     infoFields.map((field) => {
       const input = document.querySelector(`#${field}`);
-      const value = input.type === "number" ? toNumber(input.value) : input.value.trim();
+      let value = "";
+      if (!input) {
+        value = state.activeInvoice.info[field] ?? "";
+      } else if (input.type === "checkbox") {
+        value = input.checked;
+      } else if (input.type === "number") {
+        value = toNumber(input.value);
+      } else {
+        value = input.value.trim();
+      }
       return [field, value];
     })
   );
@@ -717,6 +835,18 @@ function getProjectInfo() {
 
 function syncInfoFromInputs() {
   state.activeInvoice.info = getProjectInfo();
+  updateConditionalFields();
+}
+
+function updateConditionalFields() {
+  const info = state.activeInvoice?.info || {};
+  const paymentMethod = document.querySelector("#paymentMethod")?.value || info.paymentMethod;
+  customPaymentMethodWrap.classList.toggle("is-hidden", paymentMethod !== "自訂");
+  taxRateInput.disabled = !Boolean(info.isTaxIncluded);
+}
+
+function getPaymentMethodLabel(info) {
+  return info.paymentMethod === "自訂" ? (info.customPaymentMethod || "自訂") : (info.paymentMethod || "-");
 }
 
 function toNumber(value) {
@@ -737,7 +867,8 @@ function summaryTotals(invoice = state.activeInvoice) {
   const costTotal = invoice.details.reduce((sum, detail) => sum + detailTotals(detail).costAmount, 0);
   const discountTotal = Math.min(toNumber(invoice.info.discountAmount), subtotal);
   const netSubtotal = Math.max(subtotal - discountTotal, 0);
-  const taxTotal = netSubtotal * (toNumber(invoice.info.taxRate) / 100);
+  const taxRate = invoice.info.isTaxIncluded ? toNumber(invoice.info.taxRate) : 0;
+  const taxTotal = netSubtotal * (taxRate / 100);
   const retentionTotal = netSubtotal * (toNumber(invoice.info.retentionRate) / 100);
   const grandTotal = netSubtotal + taxTotal - retentionTotal;
   const profitTotal = netSubtotal - costTotal;
@@ -777,15 +908,55 @@ function addDetail() {
   detailsContainer.lastElementChild?.querySelector("input")?.focus();
 }
 
-function deleteDetail(index) {
-  if (state.activeInvoice.details.length === 1) {
-    state.activeInvoice.details[0] = createEmptyDetail();
-  } else {
-    state.activeInvoice.details.splice(index, 1);
-  }
+function copySelectedDetails() {
+  const selected = state.activeInvoice.details.filter((detail) => state.selectedDetailIds.has(detail.id));
+  if (selected.length === 0) return;
+  const copies = selected.map((detail) => ({ ...detail, id: createId("detail"), name: `${detail.name || "未命名明細"} 複製` }));
+  state.activeInvoice.details.push(...copies);
+  state.selectedDetailIds = new Set(copies.map((detail) => detail.id));
   renderDetails();
   renderSummary();
   markActiveInvoiceDirty();
+}
+
+function deleteSelectedDetails() {
+  const count = state.selectedDetailIds.size;
+  if (count === 0) return;
+  requestDeleteConfirmation(`確定刪除 ${count} 筆已勾選明細？刪除後無法復原。`, () => {
+    if (state.activeInvoice.details.length === count) {
+      state.activeInvoice.details = [createEmptyDetail()];
+    } else {
+      state.activeInvoice.details = state.activeInvoice.details.filter((detail) => !state.selectedDetailIds.has(detail.id));
+    }
+    state.selectedDetailIds.clear();
+    renderDetails();
+    renderSummary();
+    markActiveInvoiceDirty();
+  });
+}
+
+function deleteDetail(index) {
+  requestDeleteConfirmation("確定刪除此筆明細？刪除後無法復原。", () => {
+    const removed = state.activeInvoice.details[index];
+    if (state.activeInvoice.details.length === 1) {
+      state.activeInvoice.details[0] = createEmptyDetail();
+    } else {
+      state.activeInvoice.details.splice(index, 1);
+    }
+    if (removed) state.selectedDetailIds.delete(removed.id);
+    renderDetails();
+    renderSummary();
+    markActiveInvoiceDirty();
+  });
+}
+
+function updateBulkActionState() {
+  const total = state.activeInvoice?.details.length || 0;
+  const selected = state.selectedDetailIds.size;
+  selectAllDetails.checked = total > 0 && selected === total;
+  selectAllDetails.indeterminate = selected > 0 && selected < total;
+  copySelectedDetailsButton.disabled = selected === 0;
+  deleteSelectedDetailsButton.disabled = selected === 0;
 }
 
 async function saveActiveInvoice(options = {}) {
@@ -1218,10 +1389,15 @@ function buildPdfMeta(info) {
   return `<section class="meta-grid" aria-label="工程資料">
     ${buildPdfMetaItem("工程名稱", info.projectName)}
     ${buildPdfMetaItem("業主/上游包商", info.clientName)}
+    ${buildPdfMetaItem("業主統一編號", info.clientTaxId)}
+    ${buildPdfMetaItem("業主方聯絡人", formatContact(info.clientContact, info.clientPhone))}
     ${buildPdfMetaItem("承攬廠商", info.contractorName)}
+    ${buildPdfMetaItem("承攬商統一編號", info.contractorTaxId)}
+    ${buildPdfMetaItem("承攬方聯絡人", formatContact(info.contractorContact, info.contractorPhone))}
     ${buildPdfMetaItem("請款期間", info.billingPeriod)}
+    ${buildPdfMetaItem("付款方式", getPaymentMethodLabel(info))}
     ${buildPdfMetaItem("付款條件", info.paymentTerms)}
-    ${buildPdfMetaItem("稅率 / 保留款", `${formatRate(info.taxRate)} / ${formatRate(info.retentionRate)}`)}
+    ${buildPdfMetaItem("稅務 / 保留款", `${info.isTaxIncluded ? `含稅 ${formatRate(info.taxRate)}` : "未稅"} / ${formatRate(info.retentionRate)}`)}
   </section>`;
 }
 
@@ -1262,7 +1438,6 @@ function buildClientPdfBody(invoice) {
       <tbody>${rows}</tbody>
     </table>
     ${buildPdfSummary(totals, invoice.info, false)}
-    ${buildPdfSignatures(["承辦", "覆核", "核准"])}
   </section>`;
 }
 
@@ -1309,6 +1484,9 @@ function buildInternalPdfBody(invoice) {
 }
 
 function buildPdfSummary(totals, info, includeInternal) {
+  const taxRow = info.isTaxIncluded
+    ? `<tr><th>營業稅 ${escapeHtml(formatRate(info.taxRate))}</th><td>${formatCurrency(totals.taxTotal)}</td></tr>`
+    : "";
   const internalRows = includeInternal
     ? `<tr><th>成本合計</th><td>${formatCurrency(totals.costTotal)}</td></tr>
        <tr><th>預估利潤</th><td>${formatCurrency(totals.profitTotal)}</td></tr>
@@ -1318,14 +1496,14 @@ function buildPdfSummary(totals, info, includeInternal) {
   return `<section class="summary-wrap">
     <div class="note-box">
       <strong>備註</strong>
-      <p>本文件依工程明細及約定條件彙整，金額以新台幣計算。</p>
+      <p>${escapeHtml(info.remarks || "本文件依工程明細及約定條件彙整，金額以新台幣計算。")}</p>
     </div>
     <table class="summary-table">
       <tbody>
         <tr><th>請款小計</th><td>${formatCurrency(totals.subtotal)}</td></tr>
         <tr><th>折扣費用</th><td>${formatCurrency(totals.discountTotal)}</td></tr>
         <tr><th>折扣後小計</th><td>${formatCurrency(totals.netSubtotal)}</td></tr>
-        <tr><th>營業稅 ${escapeHtml(formatRate(info.taxRate))}</th><td>${formatCurrency(totals.taxTotal)}</td></tr>
+        ${taxRow}
         <tr><th>保留款 ${escapeHtml(formatRate(info.retentionRate))}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>
         <tr class="grand"><th>本期應收</th><td>${formatCurrency(totals.grandTotal)}</td></tr>
         ${internalRows}
@@ -1472,6 +1650,11 @@ function formatRate(value) {
   return `${numberFormatter.format(toNumber(value))}%`;
 }
 
+function formatContact(name, phone) {
+  const parts = [name, phone].map((value) => String(value || "").trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join(" / ") : "-";
+}
+
 function formatFullDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -1544,13 +1727,35 @@ saveAndLeaveButton.addEventListener("click", saveAndReturnToList);
 leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
 stayOnFormButton.addEventListener("click", closeLeaveConfirm);
 cancelLeaveButton.addEventListener("click", closeLeaveConfirm);
+deleteInvoiceButton.addEventListener("click", () => deleteInvoice(state.activeInvoiceId, { fromForm: true }));
+copySelectedDetailsButton.addEventListener("click", copySelectedDetails);
+deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
+selectAllDetails.addEventListener("change", () => {
+  if (selectAllDetails.checked) {
+    state.selectedDetailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
+  } else {
+    state.selectedDetailIds.clear();
+  }
+  renderDetails();
+});
+confirmDeleteButton.addEventListener("click", confirmDeleteAction);
+cancelDeleteButton.addEventListener("click", closeDeleteConfirm);
+cancelDeleteActionButton.addEventListener("click", closeDeleteConfirm);
 saveInvoiceButton.addEventListener("click", () => saveActiveInvoice());
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 
 invoiceList.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-open-invoice]");
-  if (button) {
-    showForm(button.dataset.openInvoice);
+  const openButton = event.target.closest("[data-open-invoice]");
+  const copyButton = event.target.closest("[data-copy-invoice]");
+  const deleteButton = event.target.closest("[data-delete-invoice]");
+  if (openButton) {
+    showForm(openButton.dataset.openInvoice);
+  }
+  if (copyButton) {
+    copyInvoice(copyButton.dataset.copyInvoice);
+  }
+  if (deleteButton) {
+    deleteInvoice(deleteButton.dataset.deleteInvoice);
   }
 });
 
@@ -1598,6 +1803,17 @@ detailsContainer.addEventListener("input", (event) => {
 });
 
 detailsContainer.addEventListener("click", (event) => {
+  const selectDetail = event.target.closest("[data-select-detail]");
+  if (selectDetail) {
+    if (selectDetail.checked) {
+      state.selectedDetailIds.add(selectDetail.dataset.selectDetail);
+    } else {
+      state.selectedDetailIds.delete(selectDetail.dataset.selectDetail);
+    }
+    updateBulkActionState();
+    return;
+  }
+
   const deleteButton = event.target.closest("[data-delete-detail]");
   if (deleteButton) {
     deleteDetail(Number(deleteButton.dataset.deleteDetail));
@@ -1691,6 +1907,7 @@ document.addEventListener("keydown", (event) => {
     closeExportMenu();
     closeAccountPanel();
     closeLeaveConfirm();
+    closeDeleteConfirm();
   }
 });
 
