@@ -73,7 +73,7 @@
             <p class="user-line" id="currentUserLine"></p>
           </div>
           <div class="actions">
-            <button class="primary-button" id="newInvoiceButton" type="button">新增請款單</button>
+            <button class="primary-button" id="newInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">＋</span>新增請款單</button>
           </div>
         </header>
 
@@ -96,18 +96,18 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">Ez2Earn</p>
-            <h1>工程請款表單</h1>
+            <h1>工程請款表單 <span class="collab-pill is-hidden" id="collaborativeBadge">共同編輯</span></h1>
             <p class="user-line" id="formUserLine"></p>
             <p class="saved-line" id="lastSavedLine">最近儲存：尚未儲存</p>
           </div>
           <div class="actions">
-            <button class="secondary-button" id="backToListButton" type="button">返回列表</button>
-            <button class="secondary-button" id="saveInvoiceButton" type="button">儲存</button>
-            <button class="secondary-button" id="closeInvoiceButton" type="button">結案</button>
-            <button class="secondary-button danger-button" id="deleteInvoiceButton" type="button">刪除</button>
+            <button class="secondary-button" id="backToListButton" type="button"><span class="button-icon" aria-hidden="true">←</span>返回列表</button>
+            <button class="secondary-button" id="saveInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">✓</span>儲存</button>
+            <button class="secondary-button" id="closeInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">□</span>結案</button>
+            <button class="secondary-button danger-button" id="deleteInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">×</span>刪除</button>
             <div class="export-wrap">
               <button class="primary-button" id="exportButton" type="button" aria-haspopup="true" aria-expanded="false">
-                匯出
+                <span class="button-icon" aria-hidden="true">⇩</span>匯出
                 <span aria-hidden="true">▾</span>
               </button>
               <div class="export-menu" id="exportMenu" role="menu" aria-label="匯出表單">
@@ -136,7 +136,7 @@
             </div>
             <form id="inviteForm" class="invite-form">
               <input id="inviteTarget" type="text" placeholder="Email / 會員編號">
-              <button class="secondary-button" type="submit">送出邀請</button>
+              <button class="secondary-button" type="submit"><span class="button-icon" aria-hidden="true">＋</span>送出邀請</button>
             </form>
             <div id="inviteMessage" class="form-message" role="status" aria-live="polite"></div>
           </section>
@@ -348,8 +348,8 @@
           <p class="sidebar-user" id="sidebarUserLine"></p>
           <p class="sidebar-saved" id="sidebarLastSavedLine">最近儲存：尚未儲存</p>
           <div class="sidebar-actions">
-            <button class="secondary-button" id="accountButton" type="button">帳號管理</button>
-            <button class="secondary-button" id="logoutButton" type="button">登出</button>
+            <button class="secondary-button" id="accountButton" type="button"><span class="button-icon" aria-hidden="true">◇</span>帳號管理</button>
+            <button class="secondary-button" id="logoutButton" type="button"><span class="button-icon" aria-hidden="true">↩</span>登出</button>
           </div>
         </section>
 
@@ -370,7 +370,7 @@
 
         <section class="message-board-widget sidebar-card is-hidden" id="messageBoardWidget" aria-label="留言板">
           <button class="message-board-button" id="messageBoardButton" type="button" aria-expanded="false">
-            留言板
+            <span class="button-icon" aria-hidden="true">▤</span>留言板
           </button>
           <aside class="message-board-panel is-hidden" id="messageBoardPanel" aria-label="留言板">
             <div class="message-board-heading">
@@ -383,7 +383,7 @@
             <div id="messageBoardList" class="message-board-list"></div>
             <form id="messageBoardForm" class="message-board-form">
               <textarea id="messageInput" rows="3" placeholder="輸入留言"></textarea>
-              <button class="primary-button" type="submit">送出</button>
+              <button class="primary-button" type="submit"><span class="button-icon" aria-hidden="true">↗</span>送出</button>
             </form>
             <div id="messageBoardStatus" class="form-message" role="status" aria-live="polite"></div>
           </aside>
@@ -482,8 +482,8 @@
             </label>
             <p class="password-rule">若要變更密碼，需包含英文大寫、小寫、數字與符號，且至少 8 碼。</p>
             <div class="account-form-actions">
-              <button class="primary-button" type="submit">更新帳號</button>
-              <button class="secondary-button" id="versionDetailButton" type="button">版本詳情</button>
+              <button class="primary-button" type="submit"><span class="button-icon" aria-hidden="true">✓</span>更新帳號</button>
+              <button class="secondary-button" id="versionDetailButton" type="button"><span class="button-icon" aria-hidden="true">i</span>版本詳情</button>
             </div>
           </form>
           <div id="accountMessage" class="form-message" role="status" aria-live="polite"></div>
@@ -493,7 +493,7 @@
               <h2>最高權限管理</h2>
               <div class="inline-actions">
                 <p id="accountCount">0 個帳號</p>
-                <button class="secondary-button" id="userAnalyticsButton" type="button">用戶數據分析</button>
+                <button class="secondary-button" id="userAnalyticsButton" type="button"><span class="button-icon" aria-hidden="true">◌</span>用戶數據分析</button>
               </div>
             </div>
             <div id="adminAccountList" class="admin-account-list"></div>

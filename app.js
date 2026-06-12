@@ -1,5 +1,6 @@
 const ACCOUNT_STORAGE_KEY = "ez2earn-accounts-v1";
 const INVITATION_STORAGE_KEY = "ez2earn-invitations-v1";
+const SHARED_INVOICE_STORAGE_KEY = "ez2earn-shared-invoices-v1";
 const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
 const ADMIN_EMAILS = ["irrvyh4815@gmail.com", "r3nault1999@gmail.com"];
@@ -9,10 +10,20 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612003";
+const APP_VERSION = "ez2earn_260612004";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "被邀請共同編輯的請款單會直接顯示於主列表。",
+      "列表與表頭新增綠色共同編輯標籤。",
+      "通知按鈕統一為前往並可跳轉請款單。",
+      "優化通知紅點、喇叭圖示與主要按鈕圖示。"
+    ]
+  },
+  {
+    version: "ez2earn_260612003",
     date: "2026/06/12",
     items: [
       "新增註冊信箱驗證碼預留欄位與開關，目前正式上架前不啟用。",
@@ -97,6 +108,7 @@ const state = {
   invoices: [],
   activeInvoiceId: null,
   activeInvoice: null,
+  activeInvoiceSource: "own",
   isInvoiceDirty: false,
   selectedDetailIds: new Set(),
   pendingDeleteAction: null,
@@ -131,6 +143,7 @@ const invoiceSearchInput = document.querySelector("#invoiceSearchInput");
 const noticeList = document.querySelector("#noticeList");
 const noticeCount = document.querySelector("#noticeCount");
 const detailsContainer = document.querySelector("#detailsContainer");
+const collaborativeBadge = document.querySelector("#collaborativeBadge");
 const exportButton = document.querySelector("#exportButton");
 const exportMenu = document.querySelector("#exportMenu");
 const saveStatus = document.querySelector("#saveStatus");
@@ -599,6 +612,25 @@ async function loadUserVault() {
     }
     await persistInvoices();
   }
+  await syncOwnedSharedInvoices();
+}
+
+async function syncOwnedSharedInvoices() {
+  const ownedSharedInvoices = loadSharedInvoices().filter((invoice) => invoice.ownerMemberCode === state.currentUser.memberCode);
+  let didUpdate = false;
+  ownedSharedInvoices.forEach((sharedInvoice) => {
+    const index = state.invoices.findIndex((invoice) => invoice.id === sharedInvoice.id);
+    if (index < 0) {
+      state.invoices.unshift(sharedInvoice);
+      didUpdate = true;
+      return;
+    }
+    if (new Date(sharedInvoice.updatedAt) > new Date(state.invoices[index].updatedAt)) {
+      state.invoices[index] = sharedInvoice;
+      didUpdate = true;
+    }
+  });
+  if (didUpdate) await persistInvoices();
 }
 
 function loadLegacyInvoices() {
@@ -679,6 +711,56 @@ async function persistInvoices() {
   localStorage.setItem(`${VAULT_PREFIX}${state.currentUser.memberCode}`, JSON.stringify(encrypted));
 }
 
+function loadSharedInvoices() {
+  try {
+    const invoices = JSON.parse(localStorage.getItem(SHARED_INVOICE_STORAGE_KEY) || "[]");
+    return Array.isArray(invoices) ? invoices.map(normalizeInvoice) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSharedInvoices(invoices) {
+  localStorage.setItem(SHARED_INVOICE_STORAGE_KEY, JSON.stringify(invoices));
+}
+
+function upsertSharedInvoice(invoice) {
+  if (!invoice || !Array.isArray(invoice.collaborators) || invoice.collaborators.length === 0) return;
+  const sharedInvoices = loadSharedInvoices();
+  const snapshot = cloneData(invoice);
+  const index = sharedInvoices.findIndex((item) => item.id === snapshot.id);
+  if (index >= 0) {
+    sharedInvoices[index] = snapshot;
+  } else {
+    sharedInvoices.unshift(snapshot);
+  }
+  saveSharedInvoices(sharedInvoices);
+}
+
+function removeSharedInvoice(invoiceId) {
+  saveSharedInvoices(loadSharedInvoices().filter((invoice) => invoice.id !== invoiceId));
+}
+
+function getAccessibleSharedInvoices() {
+  if (!state.currentUser) return [];
+  const ownIds = new Set(state.invoices.map((invoice) => invoice.id));
+  return loadSharedInvoices()
+    .filter((invoice) => !ownIds.has(invoice.id))
+    .filter((invoice) => canEditInvoice(invoice));
+}
+
+function getVisibleInvoices() {
+  return [...state.invoices, ...getAccessibleSharedInvoices()];
+}
+
+function findVisibleInvoice(invoiceId) {
+  return getVisibleInvoices().find((invoice) => invoice.id === invoiceId);
+}
+
+function isSharedInvoice(invoice) {
+  return Boolean(invoice && state.currentUser && invoice.ownerMemberCode !== state.currentUser.memberCode && canEditInvoice(invoice));
+}
+
 function cloneData(value) {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
 }
@@ -704,6 +786,7 @@ function showList() {
   const next = () => {
     state.activeInvoiceId = null;
     state.activeInvoice = null;
+    state.activeInvoiceSource = "own";
     state.isInvoiceDirty = false;
     state.selectedDetailIds.clear();
     closeExportMenu();
@@ -731,9 +814,14 @@ function showList() {
 
 function showForm(invoiceId) {
   const next = () => {
-    const invoice = state.invoices.find((item) => item.id === invoiceId);
+    const invoice = findVisibleInvoice(invoiceId);
+    if (!invoice) {
+      renderInvoiceList();
+      return;
+    }
     state.activeInvoice = cloneData(invoice);
     state.activeInvoiceId = invoiceId;
+    state.activeInvoiceSource = state.invoices.some((item) => item.id === invoiceId) ? "own" : "shared";
     state.isInvoiceDirty = false;
     state.selectedDetailIds.clear();
     authView.classList.add("is-hidden");
@@ -777,10 +865,13 @@ function returnToListWithoutSaving() {
 }
 
 async function copyInvoice(invoiceId) {
-  const source = state.invoices.find((invoice) => invoice.id === invoiceId);
+  const source = findVisibleInvoice(invoiceId);
   if (!source) return;
   const copy = cloneData(source);
   copy.id = createId("invoice");
+  copy.ownerMemberCode = state.currentUser.memberCode;
+  copy.collaborators = [];
+  copy.messages = [];
   copy.updatedAt = new Date().toISOString();
   copy.isClosed = false;
   copy.closedAt = "";
@@ -798,15 +889,26 @@ async function copyInvoice(invoiceId) {
 }
 
 function deleteInvoice(invoiceId, options = {}) {
-  const invoice = state.invoices.find((item) => item.id === invoiceId);
+  const invoice = findVisibleInvoice(invoiceId);
   if (!invoice) return;
   const title = invoice.info.projectName || invoice.info.invoiceNo || "此請款單";
-  requestDeleteConfirmation(`確定刪除「${title}」？刪除後無法復原。`, async () => {
-    state.invoices = state.invoices.filter((item) => item.id !== invoiceId);
-    if (state.invoices.length === 0) {
-      state.invoices = [createInvoice()];
+  const isShared = isSharedInvoice(invoice);
+  requestDeleteConfirmation(isShared ? `確定從你的列表移除「${title}」？` : `確定刪除「${title}」？刪除後無法復原。`, async () => {
+    if (isShared) {
+      const sharedInvoices = loadSharedInvoices();
+      const sharedInvoice = sharedInvoices.find((item) => item.id === invoiceId);
+      if (sharedInvoice) {
+        sharedInvoice.collaborators = sharedInvoice.collaborators.filter((memberCode) => memberCode !== state.currentUser.memberCode);
+        saveSharedInvoices(sharedInvoices);
+      }
+    } else {
+      state.invoices = state.invoices.filter((item) => item.id !== invoiceId);
+      removeSharedInvoice(invoiceId);
+      if (state.invoices.length === 0) {
+        state.invoices = [createInvoice()];
+      }
+      await persistInvoices();
     }
-    await persistInvoices();
     if (options.fromForm) {
       showList();
       return;
@@ -989,8 +1091,9 @@ function renderLastSaved() {
 }
 
 function renderInvoiceList() {
+  const visibleInvoices = getVisibleInvoices();
   const query = state.invoiceSearchQuery.trim().toLowerCase();
-  const filteredInvoices = state.invoices
+  const filteredInvoices = visibleInvoices
     .filter((invoice) => {
       if (!query) return true;
       const haystack = `${invoice.info.projectName || ""} ${invoice.info.invoiceNo || ""}`.toLowerCase();
@@ -1001,8 +1104,8 @@ function renderInvoiceList() {
   const closedInvoices = filteredInvoices.filter((invoice) => invoice.isClosed);
 
   invoiceCount.textContent = query
-    ? `${filteredInvoices.length} / ${state.invoices.length} 張`
-    : `${state.invoices.length} 張`;
+    ? `${filteredInvoices.length} / ${visibleInvoices.length} 張`
+    : `${visibleInvoices.length} 張`;
   invoiceList.innerHTML = "";
 
   if (filteredInvoices.length === 0) {
@@ -1035,11 +1138,12 @@ function renderInvoiceGroup(title, invoices) {
 
   invoices.forEach((invoice) => {
     const totals = summaryTotals(invoice);
+    const isShared = isSharedInvoice(invoice);
     const card = document.createElement("article");
     card.className = `invoice-card${invoice.isClosed ? " is-closed" : ""}`;
     card.innerHTML = `
         <div>
-          <h2>${escapeHtml(invoice.info.projectName || "未命名工程")} ${invoice.isClosed ? '<span class="status-pill">已結案</span>' : ""}</h2>
+          <h2>${escapeHtml(invoice.info.projectName || "未命名工程")} ${isShared ? '<span class="collab-pill">共同編輯</span>' : ""} ${invoice.isClosed ? '<span class="status-pill">已結案</span>' : ""}</h2>
           <p>${escapeHtml(invoice.info.invoiceNo || "未填單號")} · ${escapeHtml(invoice.info.clientName || "未填業主")}</p>
         </div>
         <div class="invoice-card-meta">
@@ -1047,9 +1151,9 @@ function renderInvoiceGroup(title, invoices) {
           <span>${invoice.isClosed ? `結案 ${formatDateTime(invoice.closedAt)}` : `更新 ${formatDateTime(invoice.updatedAt)}`}</span>
         </div>
         <div class="invoice-card-actions">
-          <button class="secondary-button" type="button" data-open-invoice="${invoice.id}">編輯</button>
-          <button class="secondary-button" type="button" data-copy-invoice="${invoice.id}">複製</button>
-          <button class="secondary-button danger-button" type="button" data-delete-invoice="${invoice.id}">刪除</button>
+          <button class="secondary-button" type="button" data-open-invoice="${invoice.id}"><span class="button-icon" aria-hidden="true">↗</span>編輯</button>
+          <button class="secondary-button" type="button" data-copy-invoice="${invoice.id}"><span class="button-icon" aria-hidden="true">⧉</span>複製</button>
+          <button class="secondary-button danger-button" type="button" data-delete-invoice="${invoice.id}"><span class="button-icon" aria-hidden="true">×</span>刪除</button>
         </div>
       `;
     group.appendChild(card);
@@ -1090,7 +1194,7 @@ function renderNotices() {
         </p>
         <span>${formatDateTime(notice.createdAt)}</span>
       </div>
-      <button class="secondary-button" type="button" data-open-notice="${notice.id}">${isMessage ? "查看" : (notice.read ? "已讀" : "標示已讀")}</button>
+      <button class="secondary-button" type="button" data-open-notice="${notice.id}"><span class="button-icon" aria-hidden="true">↗</span>前往</button>
     `;
     noticeList.appendChild(item);
   });
@@ -1223,12 +1327,13 @@ function renderForm() {
 }
 
 function updateCloseInvoiceButton() {
+  collaborativeBadge.classList.toggle("is-hidden", !isSharedInvoice(state.activeInvoice));
   if (!state.activeInvoice?.isClosed) {
-    closeInvoiceButton.textContent = "結案";
+    closeInvoiceButton.innerHTML = '<span class="button-icon" aria-hidden="true">□</span>結案';
     closeInvoiceButton.disabled = false;
     return;
   }
-  closeInvoiceButton.textContent = "恢復";
+  closeInvoiceButton.innerHTML = '<span class="button-icon" aria-hidden="true">↺</span>恢復';
   closeInvoiceButton.disabled = false;
 }
 
@@ -1465,13 +1570,23 @@ async function saveActiveInvoice(options = {}) {
   syncInfoFromInputs();
   state.activeInvoice.updatedAt = new Date().toISOString();
   const index = state.invoices.findIndex((invoice) => invoice.id === state.activeInvoiceId);
-  if (index >= 0) {
+  if (state.activeInvoiceSource === "shared" && index < 0) {
+    upsertSharedInvoice(state.activeInvoice);
+  } else if (index >= 0) {
     state.invoices[index] = cloneData(state.activeInvoice);
+    if (state.activeInvoice.collaborators.length > 0) {
+      upsertSharedInvoice(state.activeInvoice);
+    } else {
+      removeSharedInvoice(state.activeInvoice.id);
+    }
+    await persistInvoices();
   } else {
     state.invoices.unshift(state.activeInvoice);
     state.activeInvoiceId = state.activeInvoice.id;
+    state.activeInvoiceSource = "own";
+    if (state.activeInvoice.collaborators.length > 0) upsertSharedInvoice(state.activeInvoice);
+    await persistInvoices();
   }
-  await persistInvoices();
   state.isInvoiceDirty = false;
   renderLastSaved();
 
@@ -2348,7 +2463,7 @@ noticeList.addEventListener("click", (event) => {
     notice.read = true;
     saveInvitations();
     renderNotices();
-    if (notice.type === "message" && notice.invoiceId && state.invoices.some((invoice) => invoice.id === notice.invoiceId)) {
+    if (notice.invoiceId && findVisibleInvoice(notice.invoiceId)) {
       showForm(notice.invoiceId);
       noticePanel.classList.add("is-collapsed");
       noticeToggle.setAttribute("aria-expanded", "false");
