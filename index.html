@@ -85,7 +85,7 @@
           </button>
           <button class="list-tab" type="button" data-list-scope="shared">
             <span class="button-icon" aria-hidden="true">◫</span>
-            他人建立的表單
+            與他人共同編輯的表單(不含自建)
             <strong id="sharedInvoiceCount">0</strong>
           </button>
         </section>
@@ -371,6 +371,73 @@
           </aside>
           <section class="formula-panel is-hidden" id="formulaPanel" aria-label="計算式">
             <div id="formulaList" class="formula-list"></div>
+          </section>
+        </details>
+
+        <details class="fold-panel" open>
+          <summary>
+            <span>請款進度追蹤</span>
+            <span class="fold-icon" aria-hidden="true"></span>
+          </summary>
+          <section class="progress-panel" aria-label="請款進度追蹤">
+            <div class="progress-inputs">
+              <label>
+                合約總金額
+                <input id="contractAmount" type="number" min="0" step="1">
+              </label>
+              <label>
+                前期已請款金額
+                <input id="previousBilledAmount" type="number" min="0" step="1">
+              </label>
+              <label>
+                前期已保留款
+                <input id="previousRetentionAmount" type="number" min="0" step="1">
+              </label>
+              <label>
+                保留款可領日期
+                <input id="retentionReleaseDate" type="date">
+              </label>
+              <label>
+                提醒日期
+                <input id="retentionReminderDate" type="date">
+              </label>
+              <label class="progress-note-field">
+                進度備註
+                <textarea id="progressNote" rows="3" placeholder="記錄請款進度、業主保留款領回條件或提醒事項"></textarea>
+              </label>
+            </div>
+            <div class="progress-visual">
+              <div class="progress-meter" aria-label="請款比例">
+                <span id="billingProgressBar"></span>
+              </div>
+              <p id="progressHint">尚未設定合約總金額。</p>
+            </div>
+            <div class="progress-cards">
+              <div>
+                <span>本期請款</span>
+                <strong id="progressCurrentBilling">$0</strong>
+              </div>
+              <div>
+                <span>累計請款</span>
+                <strong id="progressTotalBilled">$0</strong>
+              </div>
+              <div>
+                <span>請款比例</span>
+                <strong id="progressBillingPercent">0%</strong>
+              </div>
+              <div>
+                <span>業主保留款餘額</span>
+                <strong id="progressRetentionHeld">$0</strong>
+              </div>
+              <div>
+                <span>可領狀態</span>
+                <strong id="progressReleaseStatus">尚未設定</strong>
+              </div>
+              <div>
+                <span>提醒狀態</span>
+                <strong id="progressReminderStatus">尚未設定</strong>
+              </div>
+            </div>
           </section>
         </details>
 

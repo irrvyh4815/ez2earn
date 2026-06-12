@@ -12,10 +12,20 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612008";
+const APP_VERSION = "ez2earn_260612009";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "他人共同編輯列表更名為與他人共同編輯的表單。",
+      "收支圓餅圖調整色彩並維持類立體呈現。",
+      "收支統計中的保留款恢復為保留款顯示。",
+      "請款單新增請款進度追蹤，可查看累計請款、比例、保留款餘額、可領日期、提醒日與備註。"
+    ]
+  },
+  {
+    version: "ez2earn_260612008",
     date: "2026/06/12",
     items: [
       "主列表分為自己建立與他人建立兩個表單頁面。",
@@ -118,6 +128,12 @@ const defaultInfo = {
   hasDiscount: false,
   discountAmount: 0,
   paymentTerms: "月結 30 天",
+  contractAmount: 0,
+  previousBilledAmount: 0,
+  previousRetentionAmount: 0,
+  retentionReleaseDate: "",
+  retentionReminderDate: "",
+  progressNote: "",
   remarks: ""
 };
 
@@ -142,6 +158,12 @@ const infoFields = [
   "hasDiscount",
   "discountAmount",
   "paymentTerms",
+  "contractAmount",
+  "previousBilledAmount",
+  "previousRetentionAmount",
+  "retentionReleaseDate",
+  "retentionReminderDate",
+  "progressNote",
   "remarks"
 ];
 
@@ -1394,7 +1416,7 @@ function renderInvoiceList() {
     const emptyText = query
       ? "找不到符合查詢條件的請款單。"
       : state.listScope === "shared"
-        ? "目前沒有他人建立並邀請你共同作業的請款單。"
+        ? "目前沒有與他人共同編輯的請款單。"
         : "目前沒有自己建立的請款單。";
     invoiceList.innerHTML = `<p class="empty-state">${emptyText}</p>`;
     return;
@@ -1502,11 +1524,11 @@ function renderStatsDashboard() {
   totals.marginTotal = totals.netSubtotal === 0 ? 0 : totals.profitTotal / totals.netSubtotal;
 
   const chartItems = [
-    { label: "成本", value: totals.costTotal, color: "#315f9d" },
-    { label: "盈餘", value: Math.max(totals.profitTotal, 0), color: "#0f8b6f" },
-    { label: "稅金", value: totals.taxTotal, color: "#9a6b16" },
-    { label: "其他", value: totals.retentionTotal, color: "#7c6bb0" },
-    { label: "折扣", value: totals.discountTotal, color: "#b54747" }
+    { label: "成本", value: totals.costTotal, color: "#2f6fb2" },
+    { label: "盈餘", value: Math.max(totals.profitTotal, 0), color: "#15a084" },
+    { label: "稅金", value: totals.taxTotal, color: "#f0a53a" },
+    { label: "保留款", value: totals.retentionTotal, color: "#8d7be0" },
+    { label: "折扣", value: totals.discountTotal, color: "#e35d6a" }
   ].filter((item) => item.value > 0);
   renderStatsPie(chartItems);
   renderStatsCards(totals, filtered.length);
@@ -1543,7 +1565,7 @@ function renderStatsCards(totals, count) {
     ["請款小計", formatCurrency(totals.subtotal)],
     ["折扣", formatCurrency(totals.discountTotal)],
     ["稅金", formatCurrency(totals.taxTotal)],
-    ["其他", formatCurrency(totals.retentionTotal)],
+    ["保留款", formatCurrency(totals.retentionTotal)],
     ["成本", formatCurrency(totals.costTotal)],
     ["盈餘", formatCurrency(totals.profitTotal)],
     ["毛利率", formatPercent(totals.marginTotal)]
@@ -2156,6 +2178,43 @@ function renderSummary() {
   document.querySelector("#profitTotal").textContent = formatCurrency(totals.profitTotal);
   document.querySelector("#marginTotal").textContent = formatPercent(totals.marginTotal);
   renderFormulaPanel(totals);
+  renderProgressPanel(totals);
+}
+
+function renderProgressPanel(totals = summaryTotals()) {
+  const info = state.activeInvoice.info;
+  const contractAmount = toNumber(info.contractAmount);
+  const previousBilledAmount = toNumber(info.previousBilledAmount);
+  const previousRetentionAmount = toNumber(info.previousRetentionAmount);
+  const currentBillingAmount = totals.netSubtotal + totals.taxTotal;
+  const totalBilledAmount = previousBilledAmount + currentBillingAmount;
+  const totalRetentionHeld = previousRetentionAmount + totals.retentionTotal;
+  const progressRate = contractAmount > 0 ? totalBilledAmount / contractAmount : 0;
+  const progressPercent = Math.min(Math.max(progressRate, 0), 1) * 100;
+
+  document.querySelector("#progressCurrentBilling").textContent = formatCurrency(currentBillingAmount);
+  document.querySelector("#progressTotalBilled").textContent = formatCurrency(totalBilledAmount);
+  document.querySelector("#progressBillingPercent").textContent = contractAmount > 0 ? formatPercent(progressRate) : "0%";
+  document.querySelector("#progressRetentionHeld").textContent = formatCurrency(totalRetentionHeld);
+  document.querySelector("#billingProgressBar").style.width = `${progressPercent}%`;
+  document.querySelector("#progressHint").textContent = contractAmount > 0
+    ? `合約總額 ${formatCurrency(contractAmount)}，目前已請款 ${formatPercent(progressRate)}。`
+    : "設定合約總金額後，系統會自動計算請款比例。";
+  document.querySelector("#progressReleaseStatus").textContent = getProgressDateStatus(info.retentionReleaseDate, totalRetentionHeld, "release");
+  document.querySelector("#progressReminderStatus").textContent = getProgressDateStatus(info.retentionReminderDate, totalRetentionHeld, "reminder");
+}
+
+function getProgressDateStatus(value, retentionAmount, type) {
+  if (retentionAmount <= 0 && type === "release") return "尚無保留款";
+  if (!value) return "尚未設定";
+  const target = parseDateInput(value);
+  target.setHours(0, 0, 0, 0);
+  const today = parseDateInput(getTodayDateValue());
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((target - today) / 86400000);
+  if (days < 0) return type === "release" ? `已到期 ${Math.abs(days)} 天` : `提醒已過 ${Math.abs(days)} 天`;
+  if (days === 0) return type === "release" ? "今日可申請" : "今日提醒";
+  return type === "release" ? `${formatFullDate(target)} 可領` : `${formatFullDate(target)} 提醒`;
 }
 
 function renderFormulaPanel(totals = summaryTotals()) {
@@ -2349,7 +2408,7 @@ function markActiveInvoiceDirty() {
 function applyFormPermissions() {
   const editable = canEditInvoice();
   const manageable = canManageInvoice();
-  document.querySelectorAll(".project-panel input, .project-panel select, .project-panel textarea").forEach((field) => {
+  document.querySelectorAll(".project-panel input, .project-panel select, .project-panel textarea, .progress-panel input, .progress-panel textarea, .remarks-panel textarea").forEach((field) => {
     field.disabled = !editable;
   });
   updateConditionalFields();

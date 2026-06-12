@@ -682,12 +682,14 @@ h2 {
   min-height: 58px;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 10px;
   border: 1px solid #d7e0ec;
   border-radius: 8px;
   background: #ffffff;
   color: var(--muted);
   font-weight: 900;
+  text-align: center;
   transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
@@ -796,9 +798,10 @@ h2 {
   border: 8px solid #ffffff;
   border-radius: 50%;
   background: #eef3f8;
-  box-shadow: inset 0 0 0 1px rgba(15, 31, 61, 0.14), 0 18px 0 #c9d5e5, 0 28px 24px rgba(15, 31, 61, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(15, 31, 61, 0.14), inset -18px -14px 22px rgba(15, 31, 61, 0.16), 0 18px 0 #bfccdd, 0 30px 28px rgba(15, 31, 61, 0.2);
   transform: perspective(640px) rotateX(54deg);
   transform-origin: center 62%;
+  position: relative;
 }
 
 .stats-pie::after {
@@ -810,6 +813,16 @@ h2 {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.34);
   filter: blur(2px);
+}
+
+.stats-pie::before {
+  content: "";
+  position: absolute;
+  inset: 10px 18px auto;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0));
+  pointer-events: none;
 }
 
 .stats-legend {
@@ -1271,6 +1284,95 @@ input[type="checkbox"],
 .summary-panel .grand-total {
   background: var(--accent-soft);
   border-color: #c8d7ef;
+}
+
+.progress-panel {
+  display: grid;
+  gap: 14px;
+  padding: 0 12px 12px;
+}
+
+.progress-inputs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.progress-inputs label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.progress-note-field {
+  grid-column: span 2;
+}
+
+.progress-note-field textarea {
+  min-height: 78px;
+}
+
+.progress-visual {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafd 100%);
+}
+
+.progress-meter {
+  height: 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf5;
+  box-shadow: inset 0 1px 2px rgba(15, 31, 61, 0.12);
+}
+
+.progress-meter span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f6fb2 0%, #15a084 100%);
+  box-shadow: 0 0 14px rgba(21, 160, 132, 0.32);
+  transition: width 0.24s ease;
+}
+
+.progress-visual p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.progress-cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.progress-cards div {
+  display: grid;
+  gap: 6px;
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.progress-cards span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.progress-cards strong {
+  color: var(--accent-strong);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .formula-panel {
@@ -1901,6 +2003,15 @@ input[type="checkbox"],
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .progress-inputs,
+  .progress-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .progress-note-field {
+    grid-column: 1 / -1;
+  }
+
   .stats-heading,
   .stats-content {
     grid-template-columns: 1fr;
@@ -2042,6 +2153,8 @@ input[type="checkbox"],
   .project-panel,
   .remarks-panel,
   .summary-panel,
+  .progress-inputs,
+  .progress-cards,
   .stats-controls,
   .stats-panel:not(.has-custom-range) .stats-controls,
   .pie-card,
