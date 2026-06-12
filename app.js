@@ -12,10 +12,21 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612007";
+const APP_VERSION = "ez2earn_260612008";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "主列表分為自己建立與他人建立兩個表單頁面。",
+      "收支統計改為只顯示於自己建立的表單頁面，並新增自定義期間。",
+      "收支統計以當下日期為年、月、週基準，摘要新增毛利率並將保留款歸為其他。",
+      "圓餅圖調整為仿 3D 呈現。",
+      "請款明細上方移除新增小支項按鈕，改由各大項後方新增。"
+    ]
+  },
+  {
+    version: "ez2earn_260612007",
     date: "2026/06/12",
     items: [
       "通知與留言板展開後會自動標示已讀並移除紅點。",
@@ -152,9 +163,11 @@ const state = {
   pointerDragId: null,
   pointerDropId: null,
   invoiceSearchQuery: "",
+  listScope: "own",
   statsPeriodType: "year",
   statsStatusFilter: "closed",
-  statsReferenceDate: new Date().toISOString().slice(0, 10)
+  statsCustomStart: getTodayDateValue(),
+  statsCustomEnd: getTodayDateValue()
 };
 
 const currencyFormatter = new Intl.NumberFormat("zh-TW", {
@@ -178,8 +191,13 @@ const authMessage = document.querySelector("#authMessage");
 const invoiceList = document.querySelector("#invoiceList");
 const invoiceCount = document.querySelector("#invoiceCount");
 const invoiceSearchInput = document.querySelector("#invoiceSearchInput");
+const listTabs = document.querySelectorAll("[data-list-scope]");
+const ownInvoiceCount = document.querySelector("#ownInvoiceCount");
+const sharedInvoiceCount = document.querySelector("#sharedInvoiceCount");
+const statsPanel = document.querySelector("#statsPanel");
 const statsPeriodType = document.querySelector("#statsPeriodType");
-const statsReferenceDate = document.querySelector("#statsReferenceDate");
+const statsCustomStart = document.querySelector("#statsCustomStart");
+const statsCustomEnd = document.querySelector("#statsCustomEnd");
 const statsStatusFilter = document.querySelector("#statsStatusFilter");
 const statsRangeLabel = document.querySelector("#statsRangeLabel");
 const statsPie = document.querySelector("#statsPie");
@@ -315,7 +333,8 @@ async function initApp() {
   state.invitations = loadInvitations();
   ensureAdminAccount();
   renderVersionLabels();
-  statsReferenceDate.value = state.statsReferenceDate;
+  statsCustomStart.value = state.statsCustomStart;
+  statsCustomEnd.value = state.statsCustomEnd;
   statsPeriodType.value = state.statsPeriodType;
   statsStatusFilter.value = state.statsStatusFilter;
   showAuth();
@@ -944,6 +963,15 @@ function getVisibleInvoices() {
   return [...state.invoices, ...getAccessibleSharedInvoices()];
 }
 
+function getOwnInvoices() {
+  if (!state.currentUser) return [];
+  return state.invoices.filter((invoice) => invoice.ownerMemberCode === state.currentUser.memberCode);
+}
+
+function getSharedListInvoices() {
+  return getAccessibleSharedInvoices().filter((invoice) => invoice.ownerMemberCode !== state.currentUser.memberCode);
+}
+
 function findVisibleInvoice(invoiceId) {
   return getVisibleInvoices().find((invoice) => invoice.id === invoiceId);
 }
@@ -1085,6 +1113,7 @@ async function copyInvoice(invoiceId) {
   };
   copy.details = copy.details.map((detail) => ({ ...detail, id: createId("detail") }));
   state.invoices.unshift(copy);
+  state.listScope = "own";
   await persistInvoices();
   renderInvoiceList();
   renderStatsDashboard();
@@ -1335,7 +1364,9 @@ function renderLastSaved() {
 }
 
 function renderInvoiceList() {
-  const visibleInvoices = getVisibleInvoices();
+  const ownInvoices = getOwnInvoices();
+  const sharedInvoices = getSharedListInvoices();
+  const visibleInvoices = state.listScope === "shared" ? sharedInvoices : ownInvoices;
   const query = state.invoiceSearchQuery.trim().toLowerCase();
   const filteredInvoices = visibleInvoices
     .filter((invoice) => {
@@ -1347,13 +1378,25 @@ function renderInvoiceList() {
   const ongoingInvoices = filteredInvoices.filter((invoice) => !invoice.isClosed);
   const closedInvoices = filteredInvoices.filter((invoice) => invoice.isClosed);
 
+  ownInvoiceCount.textContent = String(ownInvoices.length);
+  sharedInvoiceCount.textContent = String(sharedInvoices.length);
+  listTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.listScope === state.listScope);
+  });
+  statsPanel.classList.toggle("is-hidden", state.listScope !== "own");
+
   invoiceCount.textContent = query
     ? `${filteredInvoices.length} / ${visibleInvoices.length} 張`
     : `${visibleInvoices.length} 張`;
   invoiceList.innerHTML = "";
 
   if (filteredInvoices.length === 0) {
-    invoiceList.innerHTML = `<p class="empty-state">找不到符合查詢條件的請款單。</p>`;
+    const emptyText = query
+      ? "找不到符合查詢條件的請款單。"
+      : state.listScope === "shared"
+        ? "目前沒有他人建立並邀請你共同作業的請款單。"
+        : "目前沒有自己建立的請款單。";
+    invoiceList.innerHTML = `<p class="empty-state">${emptyText}</p>`;
     return;
   }
 
@@ -1414,12 +1457,21 @@ function renderInvoiceGroup(title, invoices) {
 
 function renderStatsDashboard() {
   if (!state.currentUser) return;
+  if (state.listScope !== "own") return;
+  const today = getTodayDateValue();
+  if (!state.statsCustomStart) state.statsCustomStart = today;
+  if (!state.statsCustomEnd) state.statsCustomEnd = today;
   statsPeriodType.value = state.statsPeriodType;
   statsStatusFilter.value = state.statsStatusFilter;
-  statsReferenceDate.value = state.statsReferenceDate;
+  statsCustomStart.value = state.statsCustomStart;
+  statsCustomEnd.value = state.statsCustomEnd;
+  statsPanel.classList.toggle("has-custom-range", state.statsPeriodType === "custom");
+  document.querySelectorAll(".custom-range-field").forEach((field) => {
+    field.classList.toggle("is-hidden", state.statsPeriodType !== "custom");
+  });
 
   const range = getStatsRange();
-  const ownedInvoices = state.invoices.filter((invoice) => invoice.ownerMemberCode === state.currentUser.memberCode);
+  const ownedInvoices = getOwnInvoices();
   const filtered = ownedInvoices.filter((invoice) => {
     if (state.statsStatusFilter === "closed" && !invoice.isClosed) return false;
     if (state.statsStatusFilter === "ongoing" && invoice.isClosed) return false;
@@ -1444,14 +1496,16 @@ function renderStatsDashboard() {
     retentionTotal: 0,
     discountTotal: 0,
     grandTotal: 0,
-    profitTotal: 0
+    profitTotal: 0,
+    marginTotal: 0
   });
+  totals.marginTotal = totals.netSubtotal === 0 ? 0 : totals.profitTotal / totals.netSubtotal;
 
   const chartItems = [
     { label: "成本", value: totals.costTotal, color: "#315f9d" },
     { label: "盈餘", value: Math.max(totals.profitTotal, 0), color: "#0f8b6f" },
     { label: "稅金", value: totals.taxTotal, color: "#9a6b16" },
-    { label: "保留款", value: totals.retentionTotal, color: "#7c6bb0" },
+    { label: "其他", value: totals.retentionTotal, color: "#7c6bb0" },
     { label: "折扣", value: totals.discountTotal, color: "#b54747" }
   ].filter((item) => item.value > 0);
   renderStatsPie(chartItems);
@@ -1473,7 +1527,7 @@ function renderStatsPie(items) {
     start += size;
     return segment;
   });
-  statsPie.style.background = `conic-gradient(${gradients.join(", ")})`;
+  statsPie.style.background = `radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.12) 28%, transparent 42%), conic-gradient(${gradients.join(", ")})`;
   statsLegend.innerHTML = items.map((item) => `
     <div>
       <span class="legend-swatch" style="background:${item.color}"></span>
@@ -1489,10 +1543,10 @@ function renderStatsCards(totals, count) {
     ["請款小計", formatCurrency(totals.subtotal)],
     ["折扣", formatCurrency(totals.discountTotal)],
     ["稅金", formatCurrency(totals.taxTotal)],
-    ["保留款", formatCurrency(totals.retentionTotal)],
+    ["其他", formatCurrency(totals.retentionTotal)],
     ["成本", formatCurrency(totals.costTotal)],
     ["盈餘", formatCurrency(totals.profitTotal)],
-    ["本期應收", formatCurrency(totals.grandTotal)]
+    ["毛利率", formatPercent(totals.marginTotal)]
   ];
   statsCards.innerHTML = cards.map(([label, value]) => `
     <article class="stats-card">
@@ -1504,7 +1558,16 @@ function renderStatsCards(totals, count) {
 
 function getStatsRange() {
   if (state.statsPeriodType === "all") return { type: "all", start: null, end: null };
-  const reference = parseDateInput(state.statsReferenceDate);
+  if (state.statsPeriodType === "custom") {
+    const first = parseDateInput(state.statsCustomStart);
+    const second = parseDateInput(state.statsCustomEnd);
+    const start = first <= second ? first : second;
+    const end = first <= second ? second : first;
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return { type: "custom", start, end };
+  }
+  const reference = parseDateInput(getTodayDateValue());
   const start = new Date(reference);
   const end = new Date(reference);
   if (state.statsPeriodType === "year") {
@@ -1527,6 +1590,14 @@ function getStatsRange() {
 function parseDateInput(value) {
   const parsed = new Date(`${value || new Date().toISOString().slice(0, 10)}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function getTodayDateValue() {
+  const date = new Date();
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function isInvoiceInStatsRange(invoice, range) {
@@ -2111,12 +2182,6 @@ function toggleFormulaPanel(event) {
   toggleFormulaButton.setAttribute("aria-expanded", String(isOpen));
 }
 
-function addDetail() {
-  if (!canEditInvoice()) return;
-  const sectionIndex = ensureDetailSection();
-  addChildDetail(sectionIndex);
-}
-
 function ensureDetailSection() {
   let sectionIndex = state.activeInvoice.details.map(isSectionDetail).lastIndexOf(true);
   if (sectionIndex >= 0) return sectionIndex;
@@ -2288,7 +2353,6 @@ function applyFormPermissions() {
     field.disabled = !editable;
   });
   updateConditionalFields();
-  document.querySelector("#addDetailButton").disabled = !editable;
   addSectionButton.disabled = !editable;
   copySelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
   deleteSelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
@@ -3262,6 +3326,7 @@ registerForm.addEventListener("submit", handleRegister);
 
 document.querySelector("#newInvoiceButton").addEventListener("click", async () => {
   const invoice = createInvoice();
+  state.listScope = "own";
   state.invoices.unshift(invoice);
   await persistInvoices();
   showForm(invoice.id);
@@ -3309,7 +3374,16 @@ cancelCloseActionButton.addEventListener("click", closeCloseConfirm);
 toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
 saveInvoiceButton.addEventListener("click", openEditLogPanel);
 addSectionButton.addEventListener("click", addSection);
-document.querySelector("#addDetailButton").addEventListener("click", addDetail);
+
+listTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    state.listScope = tab.dataset.listScope;
+    state.invoiceSearchQuery = "";
+    invoiceSearchInput.value = "";
+    renderInvoiceList();
+    renderStatsDashboard();
+  });
+});
 
 invoiceSearchInput.addEventListener("input", () => {
   state.invoiceSearchQuery = invoiceSearchInput.value;
@@ -3321,8 +3395,13 @@ statsPeriodType.addEventListener("change", () => {
   renderStatsDashboard();
 });
 
-statsReferenceDate.addEventListener("change", () => {
-  state.statsReferenceDate = statsReferenceDate.value || new Date().toISOString().slice(0, 10);
+statsCustomStart.addEventListener("change", () => {
+  state.statsCustomStart = statsCustomStart.value || getTodayDateValue();
+  renderStatsDashboard();
+});
+
+statsCustomEnd.addEventListener("change", () => {
+  state.statsCustomEnd = statsCustomEnd.value || getTodayDateValue();
   renderStatsDashboard();
 });
 

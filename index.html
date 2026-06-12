@@ -77,7 +77,20 @@
           </div>
         </header>
 
-        <section class="stats-panel" aria-label="收支統計">
+        <section class="list-tabs" aria-label="表單分組">
+          <button class="list-tab is-active" type="button" data-list-scope="own">
+            <span class="button-icon" aria-hidden="true">▣</span>
+            自己建立的表單
+            <strong id="ownInvoiceCount">0</strong>
+          </button>
+          <button class="list-tab" type="button" data-list-scope="shared">
+            <span class="button-icon" aria-hidden="true">◫</span>
+            他人建立的表單
+            <strong id="sharedInvoiceCount">0</strong>
+          </button>
+        </section>
+
+        <section class="stats-panel" id="statsPanel" aria-label="收支統計">
           <div class="stats-heading">
             <div>
               <h2>收支統計</h2>
@@ -91,11 +104,16 @@
                   <option value="month">本月</option>
                   <option value="week">本週</option>
                   <option value="all">全部</option>
+                  <option value="custom">自定義區間</option>
                 </select>
               </label>
-              <label>
-                基準日
-                <input id="statsReferenceDate" type="date">
+              <label class="custom-range-field">
+                起始日
+                <input id="statsCustomStart" type="date">
+              </label>
+              <label class="custom-range-field">
+                結束日
+                <input id="statsCustomEnd" type="date">
               </label>
               <label>
                 狀態
@@ -384,7 +402,6 @@
               <button class="secondary-button" id="copySelectedDetailsButton" type="button" disabled>複製勾選</button>
               <button class="secondary-button danger-button" id="deleteSelectedDetailsButton" type="button" disabled>刪除勾選</button>
               <button class="secondary-button" id="addSectionButton" type="button">新增大項目</button>
-              <button class="secondary-button" id="addDetailButton" type="button">新增小支項</button>
             </div>
           </div>
           <div class="detail-header">
