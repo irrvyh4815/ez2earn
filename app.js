@@ -4,10 +4,19 @@ const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
 const ADMIN_EMAIL = "irrvyh4815@gmail.com";
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612001";
+const APP_VERSION = "ez2earn_260612002";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "留言板移至右側浮動欄通知下方，僅於請款單編輯頁顯示。",
+      "最高權限管理員新增用戶數據分析。",
+      "版本號更新並記錄本次介面與管理功能調整。"
+    ]
+  },
+  {
+    version: "ez2earn_260612001",
     date: "2026/06/12",
     items: [
       "新增請款單留言板與留言通知。",
@@ -130,6 +139,7 @@ const noticePanel = document.querySelector("#noticePanel");
 const noticeDot = document.querySelector("#noticeDot");
 const lastSavedLine = document.querySelector("#lastSavedLine");
 const messageBoardButton = document.querySelector("#messageBoardButton");
+const messageBoardWidget = document.querySelector("#messageBoardWidget");
 const messageBoardPanel = document.querySelector("#messageBoardPanel");
 const messageBoardList = document.querySelector("#messageBoardList");
 const messageBoardForm = document.querySelector("#messageBoardForm");
@@ -170,6 +180,10 @@ const cancelCloseButton = document.querySelector("#cancelCloseButton");
 const cancelCloseActionButton = document.querySelector("#cancelCloseActionButton");
 const versionDetailButton = document.querySelector("#versionDetailButton");
 const closeVersionButton = document.querySelector("#closeVersionButton");
+const userAnalyticsButton = document.querySelector("#userAnalyticsButton");
+const analyticsPanel = document.querySelector("#analyticsPanel");
+const analyticsContent = document.querySelector("#analyticsContent");
+const closeAnalyticsButton = document.querySelector("#closeAnalyticsButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -234,7 +248,8 @@ function normalizeAccount(account) {
     passwordHash: account.passwordHash,
     disabled: Boolean(account.disabled),
     createdAt: account.createdAt || new Date().toISOString(),
-    updatedAt: account.updatedAt || account.createdAt || new Date().toISOString()
+    updatedAt: account.updatedAt || account.createdAt || new Date().toISOString(),
+    lastLoginAt: account.lastLoginAt || ""
   };
 }
 
@@ -410,6 +425,8 @@ function showAuth(mode = "login") {
     closeLeaveConfirm();
     closeDeleteConfirm();
     closeCloseConfirm();
+    closeMessageBoard();
+    updateMessageBoardWidget(false);
     updateSessionSidebar(false);
     switchAuthTab(mode);
   };
@@ -447,6 +464,9 @@ async function handleLogin(event) {
   }
 
   state.currentUser = account;
+  account.lastLoginAt = new Date().toISOString();
+  account.updatedAt = account.lastLoginAt;
+  saveAccounts();
   state.cryptoKey = await deriveVaultKey(password, account.salt);
   await loadUserVault();
   loginForm.reset();
@@ -495,7 +515,8 @@ async function handleRegister(event) {
     passwordHash: await derivePasswordHash(password, salt),
     disabled: false,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString()
   };
   state.accounts.push(account);
   saveAccounts();
@@ -639,6 +660,7 @@ function showList() {
     closeDeleteConfirm();
     closeCloseConfirm();
     closeMessageBoard();
+    updateMessageBoardWidget(false);
     authView.classList.add("is-hidden");
     listView.classList.remove("is-hidden");
     formView.classList.add("is-hidden");
@@ -674,6 +696,7 @@ function showForm(invoiceId) {
     renderForm();
     renderLastSaved();
     updateSessionSidebar(true);
+    updateMessageBoardWidget(true);
   };
 
   if (!formView.classList.contains("is-hidden")) {
@@ -825,6 +848,69 @@ function openVersionPanel() {
 
 function closeVersionPanel() {
   versionPanel.classList.add("is-hidden");
+}
+
+function openUserAnalyticsPanel() {
+  if (state.currentUser?.role !== "admin") return;
+  renderUserAnalytics();
+  analyticsPanel.classList.remove("is-hidden");
+}
+
+function closeUserAnalyticsPanel() {
+  analyticsPanel.classList.add("is-hidden");
+}
+
+function renderUserAnalytics() {
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const activeAccounts = state.accounts.filter((account) => {
+    const lastActive = new Date(account.lastLoginAt || account.updatedAt || account.createdAt).getTime();
+    return Number.isFinite(lastActive) && now - lastActive <= sevenDays && !account.disabled;
+  });
+  const disabledAccounts = state.accounts.filter((account) => account.disabled);
+  const unreadNotices = state.invitations.filter((notice) => !notice.read);
+  const messageNotices = state.invitations.filter((notice) => notice.type === "message");
+  const closedInvoices = state.invoices.filter((invoice) => invoice.isClosed);
+  const ongoingInvoices = state.invoices.filter((invoice) => !invoice.isClosed);
+
+  analyticsContent.innerHTML = `
+    <section class="analytics-grid">
+      ${buildAnalyticsCard("帳號總數", `${state.accounts.length}`, "目前此裝置資料庫中的帳號")}
+      ${buildAnalyticsCard("近 7 日活躍", `${activeAccounts.length}`, "依最後登入/更新時間推估")}
+      ${buildAnalyticsCard("停用帳號", `${disabledAccounts.length}`, "已被管理員停用")}
+      ${buildAnalyticsCard("未讀通知", `${unreadNotices.length}`, "包含邀請與留言通知")}
+      ${buildAnalyticsCard("留言通知", `${messageNotices.length}`, "留言板產生的通知")}
+      ${buildAnalyticsCard("請款單", `${ongoingInvoices.length} / ${closedInvoices.length}`, "進行中 / 已結案")}
+    </section>
+    <section class="analytics-table-wrap">
+      <h3>用戶活躍明細</h3>
+      <div class="analytics-table">
+        ${state.accounts.map((account) => {
+          const lastActive = account.lastLoginAt || account.updatedAt || account.createdAt;
+          const status = account.disabled ? "停用" : "啟用";
+          return `
+            <article class="analytics-row">
+              <div>
+                <strong>${escapeHtml(account.nickname)}</strong>
+                <span>${escapeHtml(account.email)} · ${escapeHtml(account.memberCode)}</span>
+              </div>
+              <span>${account.role === "admin" ? "最高權限" : "一般會員"}</span>
+              <span>${status}</span>
+              <span>${formatFullDateTime(lastActive)}</span>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function buildAnalyticsCard(label, value, note) {
+  return `<article class="analytics-card">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(value)}</strong>
+    <p>${escapeHtml(note)}</p>
+  </article>`;
 }
 
 function renderCurrentUser() {
@@ -984,6 +1070,11 @@ function closeMessageBoard() {
   messageBoardPanel.classList.add("is-hidden");
   messageBoardButton.setAttribute("aria-expanded", "false");
   messageBoardStatus.textContent = "";
+}
+
+function updateMessageBoardWidget(isVisible) {
+  messageBoardWidget.classList.toggle("is-hidden", !isVisible);
+  if (!isVisible) closeMessageBoard();
 }
 
 function renderMessageBoard() {
@@ -1945,6 +2036,7 @@ function openAccountPanel() {
 
 function closeAccountPanel() {
   accountPanel.classList.add("is-hidden");
+  closeUserAnalyticsPanel();
   accountMessage.textContent = "";
   document.querySelector("#accountNewPassword").value = "";
   document.querySelector("#accountNewPasswordConfirm").value = "";
@@ -2145,6 +2237,8 @@ document.querySelector("#accountForm").addEventListener("submit", updateCurrentA
 document.querySelector("#inviteForm").addEventListener("submit", inviteMember);
 versionDetailButton.addEventListener("click", openVersionPanel);
 closeVersionButton.addEventListener("click", closeVersionPanel);
+userAnalyticsButton.addEventListener("click", openUserAnalyticsPanel);
+closeAnalyticsButton.addEventListener("click", closeUserAnalyticsPanel);
 saveAndLeaveButton.addEventListener("click", saveAndReturnToList);
 leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
 stayOnFormButton.addEventListener("click", closeLeaveConfirm);
@@ -2351,6 +2445,7 @@ document.addEventListener("keydown", (event) => {
     closeExportMenu();
     closeAccountPanel();
     closeVersionPanel();
+    closeUserAnalyticsPanel();
     closeLeaveConfirm();
     closeDeleteConfirm();
     closeCloseConfirm();

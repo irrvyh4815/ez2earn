@@ -334,24 +334,6 @@
           </section>
         </details>
 
-        <button class="message-board-button" id="messageBoardButton" type="button" aria-expanded="false">
-          留言板
-        </button>
-        <aside class="message-board-panel is-hidden" id="messageBoardPanel" aria-label="留言板">
-          <div class="message-board-heading">
-            <div>
-              <p class="eyebrow">Team Chat</p>
-              <h2>留言板</h2>
-            </div>
-            <button class="icon-close" id="closeMessageBoardButton" type="button" aria-label="關閉留言板">×</button>
-          </div>
-          <div id="messageBoardList" class="message-board-list"></div>
-          <form id="messageBoardForm" class="message-board-form">
-            <textarea id="messageInput" rows="3" placeholder="輸入留言"></textarea>
-            <button class="primary-button" type="submit">送出</button>
-          </form>
-          <div id="messageBoardStatus" class="form-message" role="status" aria-live="polite"></div>
-        </aside>
       </section>
 
       <aside id="sessionSidebar" class="session-sidebar is-hidden" aria-label="工作側欄">
@@ -379,6 +361,27 @@
             </div>
             <div id="noticeList" class="notice-list"></div>
           </div>
+        </section>
+
+        <section class="message-board-widget sidebar-card is-hidden" id="messageBoardWidget" aria-label="留言板">
+          <button class="message-board-button" id="messageBoardButton" type="button" aria-expanded="false">
+            留言板
+          </button>
+          <aside class="message-board-panel is-hidden" id="messageBoardPanel" aria-label="留言板">
+            <div class="message-board-heading">
+              <div>
+                <p class="eyebrow">Team Chat</p>
+                <h2>留言板</h2>
+              </div>
+              <button class="icon-close" id="closeMessageBoardButton" type="button" aria-label="關閉留言板">×</button>
+            </div>
+            <div id="messageBoardList" class="message-board-list"></div>
+            <form id="messageBoardForm" class="message-board-form">
+              <textarea id="messageInput" rows="3" placeholder="輸入留言"></textarea>
+              <button class="primary-button" type="submit">送出</button>
+            </form>
+            <div id="messageBoardStatus" class="form-message" role="status" aria-live="polite"></div>
+          </aside>
         </section>
       </aside>
 
@@ -483,7 +486,10 @@
           <section id="adminPanel" class="admin-panel is-hidden">
             <div class="list-heading">
               <h2>最高權限管理</h2>
-              <p id="accountCount">0 個帳號</p>
+              <div class="inline-actions">
+                <p id="accountCount">0 個帳號</p>
+                <button class="secondary-button" id="userAnalyticsButton" type="button">用戶數據分析</button>
+              </div>
             </div>
             <div id="adminAccountList" class="admin-account-list"></div>
           </section>
@@ -500,6 +506,19 @@
             <button class="icon-close" id="closeVersionButton" type="button" aria-label="關閉版本詳情">×</button>
           </div>
           <div id="versionList" class="version-list"></div>
+        </div>
+      </div>
+
+      <div id="analyticsPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="analyticsTitle">
+        <div class="modal-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Analytics</p>
+              <h2 id="analyticsTitle">用戶數據分析</h2>
+            </div>
+            <button class="icon-close" id="closeAnalyticsButton" type="button" aria-label="關閉用戶數據分析">×</button>
+          </div>
+          <div id="analyticsContent" class="analytics-content"></div>
         </div>
       </div>
 
