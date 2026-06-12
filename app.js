@@ -1,5 +1,7 @@
 const ACCOUNT_STORAGE_KEY = "ez2earn-accounts-v1";
 const INVITATION_STORAGE_KEY = "ez2earn-invitations-v1";
+const INVITE_HISTORY_STORAGE_KEY = "ez2earn-invite-history-v1";
+const MESSAGE_READ_STORAGE_KEY = "ez2earn-message-reads-v1";
 const SHARED_INVOICE_STORAGE_KEY = "ez2earn-shared-invoices-v1";
 const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
@@ -10,10 +12,21 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612004";
+const APP_VERSION = "ez2earn_260612005";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "共同編輯區塊新增創建者、共同編輯者與檢視者權限管理。",
+      "新增邀請紀錄與表單成員清單，可快速邀請常用成員。",
+      "新增編輯記錄，記錄表單儲存、權限異動、留言與狀態變更。",
+      "留言板浮動按鈕新增未讀紅點提醒。",
+      { text: "版本詳情會依帳號權限隱藏企業端與最高權限管理紀錄。", adminOnly: true }
+    ]
+  },
+  {
+    version: "ez2earn_260612004",
     date: "2026/06/12",
     items: [
       "被邀請共同編輯的請款單會直接顯示於主列表。",
@@ -27,8 +40,8 @@ const VERSION_HISTORY = [
     date: "2026/06/12",
     items: [
       "新增註冊信箱驗證碼預留欄位與開關，目前正式上架前不啟用。",
-      "新增 r3nault1999@gmail.com 為最高權限管理員。",
-      "版本號更新並記錄本次帳號註冊與權限調整。"
+      { text: "新增 r3nault1999@gmail.com 為最高權限管理員。", adminOnly: true },
+      { text: "版本號更新並記錄本次帳號註冊與權限調整。", adminOnly: true }
     ]
   },
   {
@@ -36,7 +49,7 @@ const VERSION_HISTORY = [
     date: "2026/06/12",
     items: [
       "留言板移至右側浮動欄通知下方，僅於請款單編輯頁顯示。",
-      "最高權限管理員新增用戶數據分析。",
+      { text: "最高權限管理員新增用戶數據分析。", adminOnly: true },
       "版本號更新並記錄本次介面與管理功能調整。"
     ]
   },
@@ -113,6 +126,7 @@ const state = {
   selectedDetailIds: new Set(),
   pendingDeleteAction: null,
   pendingCloseAction: null,
+  pendingMemberInfoCode: "",
   draggedDetailId: null,
   pointerDragId: null,
   pointerDropId: null,
@@ -157,6 +171,10 @@ const adminPanel = document.querySelector("#adminPanel");
 const adminAccountList = document.querySelector("#adminAccountList");
 const accountCount = document.querySelector("#accountCount");
 const inviteMessage = document.querySelector("#inviteMessage");
+const inviteRoleSelect = document.querySelector("#inviteRole");
+const inviteHistoryList = document.querySelector("#inviteHistoryList");
+const collaborationMemberList = document.querySelector("#collaborationMemberList");
+const ownerOnlyPill = document.querySelector("#ownerOnlyPill");
 const sessionSidebar = document.querySelector("#sessionSidebar");
 const sidebarUserLine = document.querySelector("#sidebarUserLine");
 const sidebarLastSavedLine = document.querySelector("#sidebarLastSavedLine");
@@ -166,6 +184,7 @@ const noticePanel = document.querySelector("#noticePanel");
 const noticeDot = document.querySelector("#noticeDot");
 const lastSavedLine = document.querySelector("#lastSavedLine");
 const messageBoardButton = document.querySelector("#messageBoardButton");
+const messageBoardDot = document.querySelector("#messageBoardDot");
 const messageBoardWidget = document.querySelector("#messageBoardWidget");
 const messageBoardPanel = document.querySelector("#messageBoardPanel");
 const messageBoardList = document.querySelector("#messageBoardList");
@@ -211,6 +230,12 @@ const userAnalyticsButton = document.querySelector("#userAnalyticsButton");
 const analyticsPanel = document.querySelector("#analyticsPanel");
 const analyticsContent = document.querySelector("#analyticsContent");
 const closeAnalyticsButton = document.querySelector("#closeAnalyticsButton");
+const editLogPanel = document.querySelector("#editLogPanel");
+const editLogList = document.querySelector("#editLogList");
+const closeEditLogButton = document.querySelector("#closeEditLogButton");
+const memberInfoPanel = document.querySelector("#memberInfoPanel");
+const memberInfoContent = document.querySelector("#memberInfoContent");
+const closeMemberInfoButton = document.querySelector("#closeMemberInfoButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -221,7 +246,9 @@ function createInvoice(overrides = {}) {
     isClosed: false,
     closedAt: "",
     collaborators: [],
+    viewers: [],
     messages: [],
+    editLogs: [createEditLog("建立表單", "建立新請款單")],
     info: { ...defaultInfo, invoiceNo: `INV-${formatDateCode(now)}` },
     details: [
       { id: createId("detail"), name: "弱電管線配管", unit: "式", qty: 1, price: 86000, cost: 62000 },
@@ -301,6 +328,7 @@ function normalizeNotification(notification) {
   return {
     id: notification.id || createId("notice"),
     type: notification.type || "invite",
+    role: notification.role || "editor",
     fromMemberCode: notification.fromMemberCode || "",
     fromNickname: notification.fromNickname || "系統",
     toMemberCode: notification.toMemberCode || "",
@@ -311,6 +339,73 @@ function normalizeNotification(notification) {
     read: Boolean(notification.read),
     createdAt: notification.createdAt || new Date().toISOString()
   };
+}
+
+function loadInviteHistory() {
+  try {
+    const history = JSON.parse(localStorage.getItem(INVITE_HISTORY_STORAGE_KEY) || "[]");
+    return Array.isArray(history) ? history : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveInviteHistory(history) {
+  localStorage.setItem(INVITE_HISTORY_STORAGE_KEY, JSON.stringify(history));
+}
+
+function rememberInviteTarget(account) {
+  if (!state.currentUser || !account) return;
+  const history = loadInviteHistory().filter((item) => (
+    item.ownerMemberCode !== state.currentUser.memberCode ||
+    item.targetMemberCode !== account.memberCode
+  ));
+  history.unshift({
+    ownerMemberCode: state.currentUser.memberCode,
+    targetMemberCode: account.memberCode,
+    email: account.email,
+    nickname: account.nickname,
+    invitedAt: new Date().toISOString()
+  });
+  saveInviteHistory(history.slice(0, 80));
+}
+
+function getInviteHistoryForCurrentUser() {
+  if (!state.currentUser) return [];
+  return loadInviteHistory()
+    .filter((item) => item.ownerMemberCode === state.currentUser.memberCode)
+    .slice(0, 12);
+}
+
+function loadMessageReads() {
+  try {
+    const reads = JSON.parse(localStorage.getItem(MESSAGE_READ_STORAGE_KEY) || "{}");
+    return reads && typeof reads === "object" ? reads : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMessageReads(reads) {
+  localStorage.setItem(MESSAGE_READ_STORAGE_KEY, JSON.stringify(reads));
+}
+
+function getMessageReadKey(invoiceId) {
+  return `${state.currentUser?.memberCode || "guest"}:${invoiceId}`;
+}
+
+function getMessageReadAt(invoiceId) {
+  return loadMessageReads()[getMessageReadKey(invoiceId)] || "";
+}
+
+function markMessagesRead(invoice = state.activeInvoice) {
+  if (!invoice || !state.currentUser) return;
+  const latest = getLatestMessage(invoice);
+  if (!latest) return;
+  const reads = loadMessageReads();
+  reads[getMessageReadKey(invoice.id)] = latest.createdAt;
+  saveMessageReads(reads);
+  updateMessageBoardDot();
 }
 
 function ensureAdminAccount() {
@@ -655,11 +750,19 @@ function normalizeInvoice(invoice) {
     ownerMemberCode: invoice.ownerMemberCode || state.currentUser?.memberCode || "",
     isClosed: Boolean(invoice.isClosed),
     closedAt: invoice.closedAt || "",
-    collaborators: Array.isArray(invoice.collaborators) ? invoice.collaborators : [],
+    collaborators: uniqueMemberCodes(invoice.collaborators),
+    viewers: uniqueMemberCodes(invoice.viewers).filter((memberCode) => !uniqueMemberCodes(invoice.collaborators).includes(memberCode)),
     messages: Array.isArray(invoice.messages) ? invoice.messages.map(normalizeMessage) : [],
+    editLogs: Array.isArray(invoice.editLogs) && invoice.editLogs.length > 0
+      ? invoice.editLogs.map(normalizeEditLog)
+      : [createEditLog("建立表單", "舊資料補齊編輯記錄")],
     info: { ...defaultInfo, ...(invoice.info || {}) },
     details: normalizeDetails(invoice)
   };
+}
+
+function uniqueMemberCodes(value) {
+  return [...new Set((Array.isArray(value) ? value : []).filter(Boolean))];
 }
 
 function normalizeMessage(message) {
@@ -670,6 +773,35 @@ function normalizeMessage(message) {
     text: String(message.text || "").trim(),
     createdAt: message.createdAt || new Date().toISOString()
   };
+}
+
+function createEditLog(action, detail = "") {
+  return {
+    id: createId("log"),
+    action,
+    detail,
+    memberCode: state.currentUser?.memberCode || "",
+    nickname: state.currentUser?.nickname || "系統",
+    createdAt: new Date().toISOString()
+  };
+}
+
+function normalizeEditLog(log) {
+  return {
+    id: log.id || createId("log"),
+    action: log.action || "更新表單",
+    detail: log.detail || "",
+    memberCode: log.memberCode || "",
+    nickname: log.nickname || "未知成員",
+    createdAt: log.createdAt || new Date().toISOString()
+  };
+}
+
+function addEditLog(action, detail = "") {
+  if (!state.activeInvoice) return;
+  state.activeInvoice.editLogs = Array.isArray(state.activeInvoice.editLogs) ? state.activeInvoice.editLogs : [];
+  state.activeInvoice.editLogs.unshift(createEditLog(action, detail));
+  state.activeInvoice.editLogs = state.activeInvoice.editLogs.slice(0, 120);
 }
 
 function normalizeDetails(invoice) {
@@ -725,7 +857,8 @@ function saveSharedInvoices(invoices) {
 }
 
 function upsertSharedInvoice(invoice) {
-  if (!invoice || !Array.isArray(invoice.collaborators) || invoice.collaborators.length === 0) return;
+  const members = [...(invoice?.collaborators || []), ...(invoice?.viewers || [])];
+  if (!invoice || members.length === 0) return;
   const sharedInvoices = loadSharedInvoices();
   const snapshot = cloneData(invoice);
   const index = sharedInvoices.findIndex((item) => item.id === snapshot.id);
@@ -746,7 +879,7 @@ function getAccessibleSharedInvoices() {
   const ownIds = new Set(state.invoices.map((invoice) => invoice.id));
   return loadSharedInvoices()
     .filter((invoice) => !ownIds.has(invoice.id))
-    .filter((invoice) => canEditInvoice(invoice));
+    .filter((invoice) => canAccessInvoice(invoice));
 }
 
 function getVisibleInvoices() {
@@ -758,7 +891,7 @@ function findVisibleInvoice(invoiceId) {
 }
 
 function isSharedInvoice(invoice) {
-  return Boolean(invoice && state.currentUser && invoice.ownerMemberCode !== state.currentUser.memberCode && canEditInvoice(invoice));
+  return Boolean(invoice && state.currentUser && invoice.ownerMemberCode !== state.currentUser.memberCode && canAccessInvoice(invoice));
 }
 
 function cloneData(value) {
@@ -854,7 +987,7 @@ function closeLeaveConfirm() {
 }
 
 async function saveAndReturnToList() {
-  await saveActiveInvoice({ silent: true });
+  await saveActiveInvoice({ silent: true, logAction: "儲存表單", logDetail: "返回列表前儲存" });
   closeLeaveConfirm();
   showList();
 }
@@ -871,7 +1004,9 @@ async function copyInvoice(invoiceId) {
   copy.id = createId("invoice");
   copy.ownerMemberCode = state.currentUser.memberCode;
   copy.collaborators = [];
+  copy.viewers = [];
   copy.messages = [];
+  copy.editLogs = [createEditLog("複製表單", `由「${source.info.projectName || "未命名工程"}」複製建立`)];
   copy.updatedAt = new Date().toISOString();
   copy.isClosed = false;
   copy.closedAt = "";
@@ -899,6 +1034,7 @@ function deleteInvoice(invoiceId, options = {}) {
       const sharedInvoice = sharedInvoices.find((item) => item.id === invoiceId);
       if (sharedInvoice) {
         sharedInvoice.collaborators = sharedInvoice.collaborators.filter((memberCode) => memberCode !== state.currentUser.memberCode);
+        sharedInvoice.viewers = (sharedInvoice.viewers || []).filter((memberCode) => memberCode !== state.currentUser.memberCode);
         saveSharedInvoices(sharedInvoices);
       }
     } else {
@@ -951,7 +1087,7 @@ async function confirmCloseAction() {
 }
 
 function requestInvoiceStatusChange() {
-  if (!state.activeInvoice) return;
+  if (!state.activeInvoice || !canManageInvoice()) return;
   const title = state.activeInvoice.info.projectName || state.activeInvoice.info.invoiceNo || "此請款單";
   const isClosed = Boolean(state.activeInvoice.isClosed);
   state.pendingCloseAction = isClosed ? restoreActiveInvoice : closeActiveInvoice;
@@ -964,21 +1100,21 @@ function requestInvoiceStatusChange() {
 }
 
 async function closeActiveInvoice() {
-  if (!state.activeInvoice) return;
+  if (!state.activeInvoice || !canManageInvoice()) return;
   const now = new Date().toISOString();
   state.activeInvoice.isClosed = true;
   state.activeInvoice.closedAt = now;
   state.activeInvoice.updatedAt = now;
-  await saveActiveInvoice({ silent: true });
+  await saveActiveInvoice({ silent: true, logAction: "結案", logDetail: "請款單移入已結案" });
   showList();
 }
 
 async function restoreActiveInvoice() {
-  if (!state.activeInvoice) return;
+  if (!state.activeInvoice || !canManageInvoice()) return;
   state.activeInvoice.isClosed = false;
   state.activeInvoice.closedAt = "";
   state.activeInvoice.updatedAt = new Date().toISOString();
-  await saveActiveInvoice({ silent: true });
+  await saveActiveInvoice({ silent: true, logAction: "恢復表單", logDetail: "請款單恢復為進行中" });
   showList();
 }
 
@@ -989,18 +1125,57 @@ function renderVersionLabels() {
 }
 
 function openVersionPanel() {
-  versionList.innerHTML = VERSION_HISTORY.map((entry) => `
+  const isAdmin = state.currentUser?.role === "admin";
+  versionList.innerHTML = VERSION_HISTORY.map((entry) => {
+    const items = entry.items
+      .map(normalizeVersionItem)
+      .filter((item) => isAdmin || !item.adminOnly);
+    if (items.length === 0) return "";
+    return `
     <article class="version-item">
       <strong>${escapeHtml(entry.version)}</strong>
       <span>${escapeHtml(entry.date)}</span>
-      <ul>${entry.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <ul>${items.map((item) => `<li>${escapeHtml(item.text)}</li>`).join("")}</ul>
     </article>
-  `).join("");
+  `;
+  }).join("");
   versionPanel.classList.remove("is-hidden");
 }
 
 function closeVersionPanel() {
   versionPanel.classList.add("is-hidden");
+}
+
+function normalizeVersionItem(item) {
+  if (typeof item === "string") return { text: item, adminOnly: false };
+  return { text: item.text || "", adminOnly: Boolean(item.adminOnly) };
+}
+
+function openEditLogPanel() {
+  renderEditLogList();
+  editLogPanel.classList.remove("is-hidden");
+}
+
+function closeEditLogPanel() {
+  editLogPanel.classList.add("is-hidden");
+}
+
+function renderEditLogList() {
+  const logs = (state.activeInvoice?.editLogs || []).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (logs.length === 0) {
+    editLogList.innerHTML = `<p class="empty-state">目前沒有編輯記錄。</p>`;
+    return;
+  }
+  editLogList.innerHTML = logs.map((log) => `
+    <article class="edit-log-item">
+      <div>
+        <strong>${escapeHtml(log.action)}</strong>
+        <p>${escapeHtml(log.detail || "表單內容更新")}</p>
+      </div>
+      <span>${escapeHtml(log.nickname || "未知成員")} · ${escapeHtml(log.memberCode || "-")}</span>
+      <time>${formatFullDateTime(log.createdAt)}</time>
+    </article>
+  `).join("");
 }
 
 function openUserAnalyticsPanel() {
@@ -1190,7 +1365,7 @@ function renderNotices() {
         <strong>${escapeHtml(notice.projectName || "未命名工程")}</strong>
         <p>${isMessage
           ? `${escapeHtml(notice.fromNickname)} 在請款單留言：${escapeHtml(notice.messageText || "")}`
-          : `${escapeHtml(notice.fromNickname)} 邀請你查看請款單 ${escapeHtml(notice.invoiceNo || "")}`}
+          : `${escapeHtml(notice.fromNickname)} 邀請你以${escapeHtml(getRoleLabel(notice.role || "editor"))}身份加入 ${escapeHtml(notice.invoiceNo || "")}`}
         </p>
         <span>${formatDateTime(notice.createdAt)}</span>
       </div>
@@ -1209,16 +1384,50 @@ function getInvoiceEditors(invoice = state.activeInvoice) {
   return [invoice?.ownerMemberCode, ...(invoice?.collaborators || [])].filter(Boolean);
 }
 
+function getInvoiceViewers(invoice = state.activeInvoice) {
+  return (invoice?.viewers || []).filter(Boolean);
+}
+
+function getInvoiceMembers(invoice = state.activeInvoice) {
+  return [...new Set([...getInvoiceEditors(invoice), ...getInvoiceViewers(invoice)])];
+}
+
+function canManageInvoice(invoice = state.activeInvoice) {
+  return Boolean(invoice && state.currentUser && invoice.ownerMemberCode === state.currentUser.memberCode);
+}
+
 function canEditInvoice(invoice = state.activeInvoice) {
   if (!invoice || !state.currentUser) return false;
   const editors = getInvoiceEditors(invoice);
   return editors.length === 0 || editors.includes(state.currentUser.memberCode);
 }
 
+function canAccessInvoice(invoice = state.activeInvoice) {
+  if (!invoice || !state.currentUser) return false;
+  return canEditInvoice(invoice) || getInvoiceViewers(invoice).includes(state.currentUser.memberCode);
+}
+
+function getCurrentInvoiceRole(invoice = state.activeInvoice) {
+  if (!invoice || !state.currentUser) return "";
+  if (invoice.ownerMemberCode === state.currentUser.memberCode) return "creator";
+  if ((invoice.collaborators || []).includes(state.currentUser.memberCode)) return "editor";
+  if ((invoice.viewers || []).includes(state.currentUser.memberCode)) return "viewer";
+  return "";
+}
+
+function getRoleLabel(role) {
+  if (role === "creator") return "表單創建者";
+  if (role === "viewer") return "檢視者";
+  return "共同編輯者";
+}
+
 function toggleMessageBoard() {
   const isOpen = messageBoardPanel.classList.toggle("is-hidden") === false;
   messageBoardButton.setAttribute("aria-expanded", String(isOpen));
-  if (isOpen) renderMessageBoard();
+  if (isOpen) {
+    markMessagesRead();
+    renderMessageBoard();
+  }
 }
 
 function closeMessageBoard() {
@@ -1230,6 +1439,26 @@ function closeMessageBoard() {
 function updateMessageBoardWidget(isVisible) {
   messageBoardWidget.classList.toggle("is-hidden", !isVisible);
   if (!isVisible) closeMessageBoard();
+  updateMessageBoardDot();
+}
+
+function getLatestMessage(invoice = state.activeInvoice) {
+  const messages = invoice?.messages || [];
+  if (messages.length === 0) return null;
+  return messages.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+}
+
+function hasUnreadMessages(invoice = state.activeInvoice) {
+  const latest = getLatestMessage(invoice);
+  if (!latest || !state.currentUser || latest.authorMemberCode === state.currentUser.memberCode) return false;
+  const readAt = getMessageReadAt(invoice.id);
+  return !readAt || new Date(latest.createdAt) > new Date(readAt);
+}
+
+function updateMessageBoardDot() {
+  if (!messageBoardDot) return;
+  const visible = !messageBoardWidget.classList.contains("is-hidden") && hasUnreadMessages();
+  messageBoardDot.classList.toggle("is-hidden", !visible);
 }
 
 function renderMessageBoard() {
@@ -1283,7 +1512,8 @@ async function submitMessage(event) {
   state.activeInvoice.messages.push(message);
   state.activeInvoice.updatedAt = message.createdAt;
   messageInput.value = "";
-  await saveActiveInvoice({ silent: true });
+  await saveActiveInvoice({ silent: true, logAction: "新增留言", logDetail: text.slice(0, 80) });
+  markMessagesRead();
   createMessageNotifications(message);
   renderMessageBoard();
   renderNotices();
@@ -1322,23 +1552,142 @@ function renderForm() {
   });
   updateConditionalFields();
   updateCloseInvoiceButton();
+  renderCollaborationPanel();
   renderDetails();
   renderSummary();
+  applyFormPermissions();
+  updateMessageBoardDot();
 }
 
 function updateCloseInvoiceButton() {
   collaborativeBadge.classList.toggle("is-hidden", !isSharedInvoice(state.activeInvoice));
   if (!state.activeInvoice?.isClosed) {
     closeInvoiceButton.innerHTML = '<span class="button-icon" aria-hidden="true">□</span>結案';
-    closeInvoiceButton.disabled = false;
+    closeInvoiceButton.disabled = !canManageInvoice();
     return;
   }
   closeInvoiceButton.innerHTML = '<span class="button-icon" aria-hidden="true">↺</span>恢復';
-  closeInvoiceButton.disabled = false;
+  closeInvoiceButton.disabled = !canManageInvoice();
+}
+
+function renderCollaborationPanel() {
+  if (!state.activeInvoice) return;
+  const isOwner = canManageInvoice();
+  inviteRoleSelect.disabled = !isOwner;
+  document.querySelector("#inviteTarget").disabled = !isOwner;
+  document.querySelector("#inviteForm button").disabled = !isOwner;
+  ownerOnlyPill.textContent = isOwner ? "可調整成員權限" : "僅表單創建者可調整";
+  renderInviteHistory();
+  renderCollaborationMembers();
+}
+
+function renderInviteHistory() {
+  const history = getInviteHistoryForCurrentUser();
+  if (history.length === 0) {
+    inviteHistoryList.innerHTML = `<p class="empty-state">尚無邀請紀錄。</p>`;
+    return;
+  }
+  inviteHistoryList.innerHTML = history.map((item) => `
+    <button class="quick-chip" type="button" data-fill-invite="${escapeHtml(item.targetMemberCode)}" ${canManageInvoice() ? "" : "disabled"}>
+      <strong>${escapeHtml(item.nickname || "未命名")}</strong>
+      <span>${escapeHtml(item.targetMemberCode)} · ${escapeHtml(item.email || "")}</span>
+    </button>
+  `).join("");
+}
+
+function renderCollaborationMembers() {
+  const members = getCollaborationRows();
+  collaborationMemberList.innerHTML = members.map((member) => {
+    const account = findAccountByMemberCode(member.memberCode);
+    const name = account?.nickname || member.memberCode || "未知成員";
+    const canChange = canManageInvoice() && member.role !== "creator";
+    return `
+      <article class="member-row">
+        <button class="member-name" type="button" data-member-info="${escapeHtml(member.memberCode)}">
+          <strong>${escapeHtml(name)}</strong>
+          <span>${escapeHtml(member.memberCode || "-")}</span>
+        </button>
+        <span class="role-pill ${member.role === "viewer" ? "is-viewer" : ""}">${escapeHtml(getRoleLabel(member.role))}</span>
+        ${canChange ? `
+          <select class="member-role-select" data-member-role="${escapeHtml(member.memberCode)}" aria-label="調整 ${escapeHtml(name)} 權限">
+            <option value="editor" ${member.role === "editor" ? "selected" : ""}>共同編輯者</option>
+            <option value="viewer" ${member.role === "viewer" ? "selected" : ""}>檢視者</option>
+          </select>
+          <button class="secondary-button danger-button" type="button" data-remove-member="${escapeHtml(member.memberCode)}"><span class="button-icon" aria-hidden="true">×</span>移除</button>
+        ` : ""}
+      </article>
+    `;
+  }).join("");
+}
+
+function getCollaborationRows(invoice = state.activeInvoice) {
+  if (!invoice) return [];
+  return [
+    { role: "creator", memberCode: invoice.ownerMemberCode },
+    ...(invoice.collaborators || []).map((memberCode) => ({ role: "editor", memberCode })),
+    ...(invoice.viewers || []).map((memberCode) => ({ role: "viewer", memberCode }))
+  ].filter((item) => item.memberCode);
+}
+
+function findAccountByMemberCode(memberCode) {
+  return state.accounts.find((account) => account.memberCode === memberCode);
+}
+
+function openMemberInfo(memberCode) {
+  const account = findAccountByMemberCode(memberCode);
+  const role = getCollaborationRows().find((item) => item.memberCode === memberCode)?.role || "";
+  memberInfoContent.innerHTML = account ? `
+    <section class="member-info-grid">
+      <div><span>暱稱</span><strong>${escapeHtml(account.nickname)}</strong></div>
+      <div><span>Email</span><strong>${escapeHtml(account.email)}</strong></div>
+      <div><span>會員編號</span><strong>${escapeHtml(account.memberCode)}</strong></div>
+      <div><span>表單身份</span><strong>${escapeHtml(getRoleLabel(role))}</strong></div>
+      <div><span>帳號狀態</span><strong>${account.disabled ? "停用" : "啟用"}</strong></div>
+    </section>
+  ` : `<p class="empty-state">找不到此成員帳號資料。</p>`;
+  memberInfoPanel.classList.remove("is-hidden");
+}
+
+function closeMemberInfoPanel() {
+  memberInfoPanel.classList.add("is-hidden");
+}
+
+async function changeMemberRole(memberCode, role) {
+  if (!canManageInvoice() || !memberCode || memberCode === state.activeInvoice.ownerMemberCode) return;
+  state.activeInvoice.collaborators = (state.activeInvoice.collaborators || []).filter((code) => code !== memberCode);
+  state.activeInvoice.viewers = (state.activeInvoice.viewers || []).filter((code) => code !== memberCode);
+  if (role === "viewer") {
+    state.activeInvoice.viewers.push(memberCode);
+  } else {
+    state.activeInvoice.collaborators.push(memberCode);
+  }
+  const account = findAccountByMemberCode(memberCode);
+  await saveActiveInvoice({
+    silent: true,
+    logAction: "調整成員權限",
+    logDetail: `${account?.nickname || memberCode} 改為${getRoleLabel(role)}`
+  });
+  renderCollaborationPanel();
+}
+
+function removeCollaborationMember(memberCode) {
+  if (!canManageInvoice() || !memberCode || memberCode === state.activeInvoice.ownerMemberCode) return;
+  const account = findAccountByMemberCode(memberCode);
+  requestDeleteConfirmation(`確定移除「${account?.nickname || memberCode}」的表單權限？`, async () => {
+    state.activeInvoice.collaborators = (state.activeInvoice.collaborators || []).filter((code) => code !== memberCode);
+    state.activeInvoice.viewers = (state.activeInvoice.viewers || []).filter((code) => code !== memberCode);
+    await saveActiveInvoice({
+      silent: true,
+      logAction: "移除共同成員",
+      logDetail: `${account?.nickname || memberCode} 已自此表單移除`
+    });
+    renderCollaborationPanel();
+  });
 }
 
 function renderDetails() {
   detailsContainer.innerHTML = "";
+  const editable = canEditInvoice();
   const detailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
   state.selectedDetailIds.forEach((id) => {
     if (!detailIds.has(id)) state.selectedDetailIds.delete(id);
@@ -1348,37 +1697,37 @@ function renderDetails() {
     const totals = detailTotals(detail);
     const row = document.createElement("article");
     row.className = "detail-row";
-    row.draggable = true;
+    row.draggable = editable;
     row.dataset.detailId = detail.id;
     row.dataset.index = String(index);
     row.innerHTML = `
-      <input class="detail-select" data-select-detail="${detail.id}" type="checkbox" aria-label="選取明細 ${index + 1}" ${state.selectedDetailIds.has(detail.id) ? "checked" : ""}>
-      <button class="drag-handle" type="button" aria-label="拖曳排序" title="拖曳排序">⋮⋮</button>
+      <input class="detail-select" data-select-detail="${detail.id}" type="checkbox" aria-label="選取明細 ${index + 1}" ${state.selectedDetailIds.has(detail.id) ? "checked" : ""} ${editable ? "" : "disabled"}>
+      <button class="drag-handle" type="button" aria-label="拖曳排序" title="拖曳排序" ${editable ? "" : "disabled"}>⋮⋮</button>
       <span class="detail-index">${index + 1}</span>
       <label>
         <span>明細表單</span>
-        <input data-detail-index="${index}" data-detail-field="name" type="text" value="${escapeHtml(detail.name)}">
+        <input data-detail-index="${index}" data-detail-field="name" type="text" value="${escapeHtml(detail.name)}" ${editable ? "" : "disabled"}>
       </label>
       <label>
         <span>單位</span>
-        <input data-detail-index="${index}" data-detail-field="unit" type="text" value="${escapeHtml(detail.unit)}">
+        <input data-detail-index="${index}" data-detail-field="unit" type="text" value="${escapeHtml(detail.unit)}" ${editable ? "" : "disabled"}>
       </label>
       <label>
         <span>數量</span>
-        <input class="number" data-detail-index="${index}" data-detail-field="qty" type="number" min="0" step="0.01" value="${detail.qty}">
+        <input class="number" data-detail-index="${index}" data-detail-field="qty" type="number" min="0" step="0.01" value="${detail.qty}" ${editable ? "" : "disabled"}>
       </label>
       <label>
         <span>請款單價</span>
-        <input class="number" data-detail-index="${index}" data-detail-field="price" type="number" min="0" step="1" value="${detail.price}">
+        <input class="number" data-detail-index="${index}" data-detail-field="price" type="number" min="0" step="1" value="${detail.price}" ${editable ? "" : "disabled"}>
       </label>
       <label>
         <span>成本單價</span>
-        <input class="number" data-detail-index="${index}" data-detail-field="cost" type="number" min="0" step="1" value="${detail.cost}">
+        <input class="number" data-detail-index="${index}" data-detail-field="cost" type="number" min="0" step="1" value="${detail.cost}" ${editable ? "" : "disabled"}>
       </label>
       <output data-detail-output="amount">${formatCurrency(totals.amount)}</output>
       <output data-detail-output="cost">${formatCurrency(totals.costAmount)}</output>
       <output data-detail-output="profit">${formatCurrency(totals.profit)}</output>
-      <button class="delete-row" data-delete-detail="${index}" type="button" aria-label="刪除明細" title="刪除">×</button>
+      <button class="delete-row" data-delete-detail="${index}" type="button" aria-label="刪除明細" title="刪除" ${editable ? "" : "disabled"}>×</button>
     `;
     detailsContainer.appendChild(row);
   });
@@ -1416,14 +1765,15 @@ function updateConditionalFields() {
   const taxEnabled = Boolean(info.isTaxIncluded);
   const retentionEnabled = Boolean(info.hasRetention);
   const discountEnabled = Boolean(info.hasDiscount);
+  const editable = canEditInvoice();
   customPaymentMethodWrap.classList.toggle("is-disabled-field", !customPaymentEnabled);
   taxRateWrap.classList.toggle("is-disabled-field", !taxEnabled);
   retentionRateWrap.classList.toggle("is-disabled-field", !retentionEnabled);
   discountAmountWrap.classList.toggle("is-disabled-field", !discountEnabled);
-  customPaymentMethodInput.disabled = !customPaymentEnabled;
-  taxRateInput.disabled = !taxEnabled;
-  retentionRateInput.disabled = !retentionEnabled;
-  discountAmountInput.disabled = !discountEnabled;
+  customPaymentMethodInput.disabled = !editable || !customPaymentEnabled;
+  taxRateInput.disabled = !editable || !taxEnabled;
+  retentionRateInput.disabled = !editable || !retentionEnabled;
+  discountAmountInput.disabled = !editable || !discountEnabled;
 }
 
 function getPaymentMethodLabel(info) {
@@ -1508,6 +1858,7 @@ function toggleFormulaPanel(event) {
 }
 
 function addDetail() {
+  if (!canEditInvoice()) return;
   state.activeInvoice.details.push(createEmptyDetail());
   renderDetails();
   renderSummary();
@@ -1516,6 +1867,7 @@ function addDetail() {
 }
 
 function copySelectedDetails() {
+  if (!canEditInvoice()) return;
   const selected = state.activeInvoice.details.filter((detail) => state.selectedDetailIds.has(detail.id));
   if (selected.length === 0) return;
   const copies = selected.map((detail) => ({ ...detail, id: createId("detail"), name: `${detail.name || "未命名明細"} 複製` }));
@@ -1527,6 +1879,7 @@ function copySelectedDetails() {
 }
 
 function deleteSelectedDetails() {
+  if (!canEditInvoice()) return;
   const count = state.selectedDetailIds.size;
   if (count === 0) return;
   requestDeleteConfirmation(`確定刪除 ${count} 筆已勾選明細？刪除後無法復原。`, () => {
@@ -1543,6 +1896,7 @@ function deleteSelectedDetails() {
 }
 
 function deleteDetail(index) {
+  if (!canEditInvoice()) return;
   requestDeleteConfirmation("確定刪除此筆明細？刪除後無法復原。", () => {
     const removed = state.activeInvoice.details[index];
     if (state.activeInvoice.details.length === 1) {
@@ -1560,21 +1914,30 @@ function deleteDetail(index) {
 function updateBulkActionState() {
   const total = state.activeInvoice?.details.length || 0;
   const selected = state.selectedDetailIds.size;
+  const editable = canEditInvoice();
   selectAllDetails.checked = total > 0 && selected === total;
   selectAllDetails.indeterminate = selected > 0 && selected < total;
-  copySelectedDetailsButton.disabled = selected === 0;
-  deleteSelectedDetailsButton.disabled = selected === 0;
+  selectAllDetails.disabled = !editable;
+  copySelectedDetailsButton.disabled = !editable || selected === 0;
+  deleteSelectedDetailsButton.disabled = !editable || selected === 0;
 }
 
 async function saveActiveInvoice(options = {}) {
+  if (!canEditInvoice()) {
+    state.isInvoiceDirty = false;
+    return;
+  }
   syncInfoFromInputs();
   state.activeInvoice.updatedAt = new Date().toISOString();
+  if (options.logAction) {
+    addEditLog(options.logAction, options.logDetail || "");
+  }
   const index = state.invoices.findIndex((invoice) => invoice.id === state.activeInvoiceId);
   if (state.activeInvoiceSource === "shared" && index < 0) {
     upsertSharedInvoice(state.activeInvoice);
   } else if (index >= 0) {
     state.invoices[index] = cloneData(state.activeInvoice);
-    if (state.activeInvoice.collaborators.length > 0) {
+    if (state.activeInvoice.collaborators.length > 0 || (state.activeInvoice.viewers || []).length > 0) {
       upsertSharedInvoice(state.activeInvoice);
     } else {
       removeSharedInvoice(state.activeInvoice.id);
@@ -1584,7 +1947,7 @@ async function saveActiveInvoice(options = {}) {
     state.invoices.unshift(state.activeInvoice);
     state.activeInvoiceId = state.activeInvoice.id;
     state.activeInvoiceSource = "own";
-    if (state.activeInvoice.collaborators.length > 0) upsertSharedInvoice(state.activeInvoice);
+    if (state.activeInvoice.collaborators.length > 0 || (state.activeInvoice.viewers || []).length > 0) upsertSharedInvoice(state.activeInvoice);
     await persistInvoices();
   }
   state.isInvoiceDirty = false;
@@ -1592,8 +1955,6 @@ async function saveActiveInvoice(options = {}) {
 
   if (!options.silent) {
     setSaveStatus("已儲存");
-    saveInvoiceButton.classList.add("is-saving");
-    window.setTimeout(() => saveInvoiceButton.classList.remove("is-saving"), 520);
   }
 }
 
@@ -1602,8 +1963,26 @@ function setSaveStatus(message) {
 }
 
 function markActiveInvoiceDirty() {
+  if (!canEditInvoice()) return;
   state.isInvoiceDirty = true;
   setSaveStatus("尚未儲存");
+}
+
+function applyFormPermissions() {
+  const editable = canEditInvoice();
+  const manageable = canManageInvoice();
+  document.querySelectorAll(".project-panel input, .project-panel select, .project-panel textarea").forEach((field) => {
+    field.disabled = !editable;
+  });
+  updateConditionalFields();
+  document.querySelector("#addDetailButton").disabled = !editable;
+  copySelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
+  deleteSelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
+  selectAllDetails.disabled = !editable;
+  deleteInvoiceButton.disabled = !manageable;
+  closeInvoiceButton.disabled = !manageable;
+  document.querySelector("#inviteForm").classList.toggle("is-readonly", !manageable);
+  saveStatus.textContent = editable ? saveStatus.textContent : "檢視者模式：僅可查看與匯出。";
 }
 
 function updateVisibleDetailTotals(index) {
@@ -1616,6 +1995,7 @@ function updateVisibleDetailTotals(index) {
 }
 
 function moveDetail(fromId, toId) {
+  if (!canEditInvoice()) return;
   if (!fromId || !toId || fromId === toId) return;
   const fromIndex = state.activeInvoice.details.findIndex((detail) => detail.id === fromId);
   const toIndex = state.activeInvoice.details.findIndex((detail) => detail.id === toId);
@@ -1634,8 +2014,13 @@ function clearDragClasses() {
 
 async function inviteMember(event) {
   event.preventDefault();
+  if (!canManageInvoice()) {
+    setFormMessage(inviteMessage, "僅表單創建者可管理共同編輯。", "error");
+    return;
+  }
   syncInfoFromInputs();
   const target = document.querySelector("#inviteTarget").value.trim();
+  const role = inviteRoleSelect.value === "viewer" ? "viewer" : "editor";
   const targetAccount = findAccountByIdentifier(target);
 
   if (!targetAccount) {
@@ -1653,17 +2038,27 @@ async function inviteMember(event) {
     return;
   }
 
-  await saveActiveInvoice({ silent: true });
-  if (!state.activeInvoice.collaborators.includes(targetAccount.memberCode)) {
+  await saveActiveInvoice({ silent: true, skipLog: true });
+  state.activeInvoice.collaborators = (state.activeInvoice.collaborators || []).filter((memberCode) => memberCode !== targetAccount.memberCode);
+  state.activeInvoice.viewers = (state.activeInvoice.viewers || []).filter((memberCode) => memberCode !== targetAccount.memberCode);
+  if (role === "viewer") {
+    state.activeInvoice.viewers.push(targetAccount.memberCode);
+  } else {
     state.activeInvoice.collaborators.push(targetAccount.memberCode);
-    await saveActiveInvoice({ silent: true });
   }
+  await saveActiveInvoice({
+    silent: true,
+    logAction: "新增共同成員",
+    logDetail: `${targetAccount.nickname} 已加入為${getRoleLabel(role)}`
+  });
+  rememberInviteTarget(targetAccount);
 
   state.invitations.push({
     id: createId("invite"),
     fromMemberCode: state.currentUser.memberCode,
     fromEmail: state.currentUser.email,
     fromNickname: state.currentUser.nickname,
+    role,
     toMemberCode: targetAccount.memberCode,
     toEmail: targetAccount.email,
     invoiceId: state.activeInvoice.id,
@@ -1674,7 +2069,8 @@ async function inviteMember(event) {
   });
   saveInvitations();
   document.querySelector("#inviteTarget").value = "";
-  setFormMessage(inviteMessage, "邀請已送出。", "success");
+  renderCollaborationPanel();
+  setFormMessage(inviteMessage, `${targetAccount.nickname} 已加入為${getRoleLabel(role)}。`, "success");
 }
 
 function findAccountByIdentifier(value) {
@@ -2405,6 +2801,8 @@ versionDetailButton.addEventListener("click", openVersionPanel);
 closeVersionButton.addEventListener("click", closeVersionPanel);
 userAnalyticsButton.addEventListener("click", openUserAnalyticsPanel);
 closeAnalyticsButton.addEventListener("click", closeUserAnalyticsPanel);
+closeEditLogButton.addEventListener("click", closeEditLogPanel);
+closeMemberInfoButton.addEventListener("click", closeMemberInfoPanel);
 saveAndLeaveButton.addEventListener("click", saveAndReturnToList);
 leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
 stayOnFormButton.addEventListener("click", closeLeaveConfirm);
@@ -2418,6 +2816,7 @@ noticeToggle.addEventListener("click", toggleNoticePanel);
 copySelectedDetailsButton.addEventListener("click", copySelectedDetails);
 deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
 selectAllDetails.addEventListener("change", () => {
+  if (!canEditInvoice()) return;
   if (selectAllDetails.checked) {
     state.selectedDetailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
   } else {
@@ -2432,7 +2831,7 @@ confirmCloseButton.addEventListener("click", confirmCloseAction);
 cancelCloseButton.addEventListener("click", closeCloseConfirm);
 cancelCloseActionButton.addEventListener("click", closeCloseConfirm);
 toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
-saveInvoiceButton.addEventListener("click", () => saveActiveInvoice());
+saveInvoiceButton.addEventListener("click", openEditLogPanel);
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 
 invoiceSearchInput.addEventListener("input", () => {
@@ -2482,9 +2881,33 @@ adminAccountList.addEventListener("click", (event) => {
   }
 });
 
+inviteHistoryList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-fill-invite]");
+  if (!button || !canManageInvoice()) return;
+  document.querySelector("#inviteTarget").value = button.dataset.fillInvite;
+});
+
+collaborationMemberList.addEventListener("click", (event) => {
+  const infoButton = event.target.closest("[data-member-info]");
+  const removeButton = event.target.closest("[data-remove-member]");
+  if (infoButton) {
+    openMemberInfo(infoButton.dataset.memberInfo);
+  }
+  if (removeButton) {
+    removeCollaborationMember(removeButton.dataset.removeMember);
+  }
+});
+
+collaborationMemberList.addEventListener("change", (event) => {
+  const roleSelect = event.target.closest("[data-member-role]");
+  if (!roleSelect) return;
+  changeMemberRole(roleSelect.dataset.memberRole, roleSelect.value);
+});
+
 infoFields.forEach((field) => {
   const input = document.querySelector(`#${field}`);
   const syncField = () => {
+    if (!canEditInvoice()) return;
     syncInfoFromInputs();
     renderSummary();
     markActiveInvoiceDirty();
@@ -2494,6 +2917,7 @@ infoFields.forEach((field) => {
 });
 
 detailsContainer.addEventListener("input", (event) => {
+  if (!canEditInvoice()) return;
   const target = event.target;
 
   if (target.matches("[data-detail-field]")) {
@@ -2507,6 +2931,7 @@ detailsContainer.addEventListener("input", (event) => {
 });
 
 detailsContainer.addEventListener("click", (event) => {
+  if (!canEditInvoice()) return;
   const selectDetail = event.target.closest("[data-select-detail]");
   if (selectDetail) {
     if (selectDetail.checked) {
@@ -2525,6 +2950,7 @@ detailsContainer.addEventListener("click", (event) => {
 });
 
 detailsContainer.addEventListener("dragstart", (event) => {
+  if (!canEditInvoice()) return;
   const row = event.target.closest(".detail-row");
   if (!row) return;
   state.draggedDetailId = row.dataset.detailId;
@@ -2534,6 +2960,7 @@ detailsContainer.addEventListener("dragstart", (event) => {
 });
 
 detailsContainer.addEventListener("dragover", (event) => {
+  if (!canEditInvoice()) return;
   const row = event.target.closest(".detail-row");
   if (!row || row.dataset.detailId === state.draggedDetailId) return;
   event.preventDefault();
@@ -2545,6 +2972,7 @@ detailsContainer.addEventListener("dragleave", (event) => {
 });
 
 detailsContainer.addEventListener("drop", (event) => {
+  if (!canEditInvoice()) return;
   const row = event.target.closest(".detail-row");
   if (!row) return;
   event.preventDefault();
@@ -2557,6 +2985,7 @@ detailsContainer.addEventListener("dragend", () => {
 });
 
 detailsContainer.addEventListener("pointerdown", (event) => {
+  if (!canEditInvoice()) return;
   const handle = event.target.closest(".drag-handle");
   if (!handle) return;
   const row = handle.closest(".detail-row");
@@ -2612,6 +3041,8 @@ document.addEventListener("keydown", (event) => {
     closeAccountPanel();
     closeVersionPanel();
     closeUserAnalyticsPanel();
+    closeEditLogPanel();
+    closeMemberInfoPanel();
     closeLeaveConfirm();
     closeDeleteConfirm();
     closeCloseConfirm();

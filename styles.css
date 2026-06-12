@@ -729,8 +729,125 @@ h2 {
 
 .invite-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 160px auto;
   gap: 10px;
+}
+
+.collaboration-panel {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+
+.collaboration-heading,
+.mini-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owner-only-pill {
+  display: inline-grid;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #e4f6f1;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.invite-history,
+.member-list-wrap {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.mini-heading strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mini-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quick-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-chip {
+  display: inline-grid;
+  gap: 2px;
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 1px solid #c8d7ef;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  text-align: left;
+}
+
+.quick-chip strong {
+  font-size: 13px;
+}
+
+.quick-chip span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(130px, 160px) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.member-row:has(.role-pill:last-child) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.member-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.member-name strong,
+.member-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-name span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.member-role-select {
+  min-height: 38px;
 }
 
 .fold-panel > summary {
@@ -973,6 +1090,7 @@ input[type="checkbox"],
 }
 
 .message-board-button {
+  position: relative;
   width: 100%;
   min-height: 44px;
   border: 0;
@@ -982,6 +1100,19 @@ input[type="checkbox"],
   padding: 0 14px;
   font-weight: 900;
   text-align: left;
+}
+
+.message-dot {
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(180, 35, 47, 0.14);
+  animation: noticePulse 1.8s ease-in-out infinite;
 }
 
 .message-board-panel {
@@ -1442,6 +1573,11 @@ input[type="checkbox"],
   color: var(--success);
 }
 
+.role-pill.is-viewer {
+  background: #fff4df;
+  color: #9a5a00;
+}
+
 .collab-pill {
   min-height: 28px;
   background: #dff8ee;
@@ -1455,6 +1591,54 @@ input[type="checkbox"],
   color: var(--danger);
 }
 
+.edit-log-list {
+  display: grid;
+  gap: 10px;
+}
+
+.edit-log-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.edit-log-item strong {
+  color: var(--ink);
+}
+
+.edit-log-item p,
+.edit-log-item span,
+.edit-log-item time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.member-info-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.member-info-grid div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.member-info-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 @media (max-width: 1180px) {
   .project-panel,
   .remarks-panel {
@@ -1463,6 +1647,11 @@ input[type="checkbox"],
 
   .summary-panel {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .member-row,
+  .edit-log-item {
+    grid-template-columns: 1fr;
   }
 
   .detail-header {
@@ -1586,6 +1775,12 @@ input[type="checkbox"],
   .notice-item,
   .invite-form {
     grid-template-columns: 1fr;
+  }
+
+  .collaboration-heading,
+  .mini-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .invoice-card-meta {

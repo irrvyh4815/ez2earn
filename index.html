@@ -102,7 +102,7 @@
           </div>
           <div class="actions">
             <button class="secondary-button" id="backToListButton" type="button"><span class="button-icon" aria-hidden="true">←</span>返回列表</button>
-            <button class="secondary-button" id="saveInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">✓</span>儲存</button>
+            <button class="secondary-button" id="saveInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">◷</span>編輯記錄</button>
             <button class="secondary-button" id="closeInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">□</span>結案</button>
             <button class="secondary-button danger-button" id="deleteInvoiceButton" type="button"><span class="button-icon" aria-hidden="true">×</span>刪除</button>
             <div class="export-wrap">
@@ -126,18 +126,39 @@
 
         <details class="fold-panel" open>
           <summary>
-            <span>邀請會員加入編輯</span>
+            <span>共同編輯</span>
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
-          <section class="invite-panel" aria-label="邀請會員加入編輯">
-            <div>
-              <h2>邀請會員加入編輯</h2>
-              <p>輸入對方 Email 或會員編號，對方會在通知收到提醒。</p>
+          <section class="invite-panel collaboration-panel" aria-label="共同編輯">
+            <div class="collaboration-heading">
+              <div>
+                <h2>共同編輯</h2>
+                <p>管理此請款單的創建者、共同編輯者與檢視者。</p>
+              </div>
+              <span class="owner-only-pill" id="ownerOnlyPill">創建者可調整權限</span>
             </div>
             <form id="inviteForm" class="invite-form">
               <input id="inviteTarget" type="text" placeholder="Email / 會員編號">
-              <button class="secondary-button" type="submit"><span class="button-icon" aria-hidden="true">＋</span>送出邀請</button>
+              <select id="inviteRole" aria-label="邀請身份">
+                <option value="editor">共同編輯者</option>
+                <option value="viewer">檢視者</option>
+              </select>
+              <button class="secondary-button" type="submit"><span class="button-icon" aria-hidden="true">＋</span>新增成員</button>
             </form>
+            <div class="invite-history">
+              <div class="mini-heading">
+                <strong>邀請紀錄</strong>
+                <span>點選即可快速帶入</span>
+              </div>
+              <div id="inviteHistoryList" class="quick-chip-list"></div>
+            </div>
+            <div class="member-list-wrap">
+              <div class="mini-heading">
+                <strong>表單成員</strong>
+                <span>點擊暱稱查看帳號資訊</span>
+              </div>
+              <div id="collaborationMemberList" class="member-list"></div>
+            </div>
             <div id="inviteMessage" class="form-message" role="status" aria-live="polite"></div>
           </section>
         </details>
@@ -371,6 +392,7 @@
         <section class="message-board-widget sidebar-card is-hidden" id="messageBoardWidget" aria-label="留言板">
           <button class="message-board-button" id="messageBoardButton" type="button" aria-expanded="false">
             <span class="button-icon" aria-hidden="true">▤</span>留言板
+            <span class="message-dot is-hidden" id="messageBoardDot" aria-hidden="true"></span>
           </button>
           <aside class="message-board-panel is-hidden" id="messageBoardPanel" aria-label="留言板">
             <div class="message-board-heading">
@@ -511,6 +533,32 @@
             <button class="icon-close" id="closeVersionButton" type="button" aria-label="關閉版本詳情">×</button>
           </div>
           <div id="versionList" class="version-list"></div>
+        </div>
+      </div>
+
+      <div id="editLogPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="editLogTitle">
+        <div class="modal-card confirm-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Audit Trail</p>
+              <h2 id="editLogTitle">編輯記錄</h2>
+            </div>
+            <button class="icon-close" id="closeEditLogButton" type="button" aria-label="關閉編輯記錄">×</button>
+          </div>
+          <div id="editLogList" class="edit-log-list"></div>
+        </div>
+      </div>
+
+      <div id="memberInfoPanel" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="memberInfoTitle">
+        <div class="modal-card confirm-card">
+          <div class="modal-heading">
+            <div>
+              <p class="eyebrow">Member</p>
+              <h2 id="memberInfoTitle">成員資訊</h2>
+            </div>
+            <button class="icon-close" id="closeMemberInfoButton" type="button" aria-label="關閉成員資訊">×</button>
+          </div>
+          <div id="memberInfoContent" class="member-info-content"></div>
         </div>
       </div>
 
