@@ -12,10 +12,20 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612005";
+const APP_VERSION = "ez2earn_260612006";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "請款明細新增大項目與小支項分類輸入。",
+      "共同編輯收合列常態顯示目前共用人數。",
+      "PDF 匯出會依是否勾選保留款與折扣決定是否顯示欄位。",
+      { text: "最高權限管理員可刪除其他最高權限管理員帳號。", adminOnly: true }
+    ]
+  },
+  {
+    version: "ez2earn_260612005",
     date: "2026/06/12",
     items: [
       "共同編輯區塊新增創建者、共同編輯者與檢視者權限管理。",
@@ -174,6 +184,7 @@ const inviteMessage = document.querySelector("#inviteMessage");
 const inviteRoleSelect = document.querySelector("#inviteRole");
 const inviteHistoryList = document.querySelector("#inviteHistoryList");
 const collaborationMemberList = document.querySelector("#collaborationMemberList");
+const collaborationCountPill = document.querySelector("#collaborationCountPill");
 const ownerOnlyPill = document.querySelector("#ownerOnlyPill");
 const sessionSidebar = document.querySelector("#sessionSidebar");
 const sidebarUserLine = document.querySelector("#sidebarUserLine");
@@ -202,6 +213,7 @@ const closeInvoiceButton = document.querySelector("#closeInvoiceButton");
 const selectAllDetails = document.querySelector("#selectAllDetails");
 const copySelectedDetailsButton = document.querySelector("#copySelectedDetailsButton");
 const deleteSelectedDetailsButton = document.querySelector("#deleteSelectedDetailsButton");
+const addSectionButton = document.querySelector("#addSectionButton");
 const customPaymentMethodWrap = document.querySelector("#customPaymentMethodWrap");
 const customPaymentMethodInput = document.querySelector("#customPaymentMethod");
 const taxRateWrap = document.querySelector("#taxRateWrap");
@@ -251,8 +263,10 @@ function createInvoice(overrides = {}) {
     editLogs: [createEditLog("建立表單", "建立新請款單")],
     info: { ...defaultInfo, invoiceNo: `INV-${formatDateCode(now)}` },
     details: [
+      { id: createId("detail"), type: "section", name: "電氣工程" },
       { id: createId("detail"), name: "弱電管線配管", unit: "式", qty: 1, price: 86000, cost: 62000 },
       { id: createId("detail"), name: "照明迴路追加", unit: "點", qty: 24, price: 1800, cost: 1120 },
+      { id: createId("detail"), type: "section", name: "現場支援" },
       { id: createId("detail"), name: "現場協調及測試", unit: "日", qty: 3, price: 6500, cost: 4200 }
     ],
     ...overrides
@@ -823,8 +837,16 @@ function normalizeDetails(invoice) {
 }
 
 function normalizeDetail(detail) {
+  if (detail.type === "section") {
+    return {
+      id: detail.id || createId("detail"),
+      type: "section",
+      name: detail.name || "未命名大項目"
+    };
+  }
   return {
     id: detail.id || createId("detail"),
+    type: "item",
     name: detail.name || "",
     unit: detail.unit || "式",
     qty: toNumber(detail.qty),
@@ -834,7 +856,19 @@ function normalizeDetail(detail) {
 }
 
 function createEmptyDetail() {
-  return { id: createId("detail"), name: "", unit: "式", qty: 1, price: 0, cost: 0 };
+  return { id: createId("detail"), type: "item", name: "", unit: "式", qty: 1, price: 0, cost: 0 };
+}
+
+function createEmptySection() {
+  return { id: createId("detail"), type: "section", name: "新增大項目" };
+}
+
+function isSectionDetail(detail) {
+  return detail?.type === "section";
+}
+
+function getBillableDetails(invoice = state.activeInvoice) {
+  return (invoice?.details || []).filter((detail) => !isSectionDetail(detail));
 }
 
 async function persistInvoices() {
@@ -1573,6 +1607,8 @@ function updateCloseInvoiceButton() {
 function renderCollaborationPanel() {
   if (!state.activeInvoice) return;
   const isOwner = canManageInvoice();
+  const sharedCount = getInvoiceMembers(state.activeInvoice).length;
+  collaborationCountPill.textContent = `${sharedCount} 人共用`;
   inviteRoleSelect.disabled = !isOwner;
   document.querySelector("#inviteTarget").disabled = !isOwner;
   document.querySelector("#inviteForm button").disabled = !isOwner;
@@ -1690,10 +1726,31 @@ function renderDetails() {
   const editable = canEditInvoice();
   const detailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
   state.selectedDetailIds.forEach((id) => {
-    if (!detailIds.has(id)) state.selectedDetailIds.delete(id);
+    const detail = state.activeInvoice.details.find((item) => item.id === id);
+    if (!detailIds.has(id) || isSectionDetail(detail)) state.selectedDetailIds.delete(id);
   });
 
   state.activeInvoice.details.forEach((detail, index) => {
+    if (isSectionDetail(detail)) {
+      const row = document.createElement("article");
+      row.className = "detail-row detail-section-row";
+      row.draggable = editable;
+      row.dataset.detailId = detail.id;
+      row.dataset.index = String(index);
+      row.innerHTML = `
+        <span></span>
+        <button class="drag-handle" type="button" aria-label="拖曳大項目" title="拖曳排序" ${editable ? "" : "disabled"}>⋮⋮</button>
+        <span class="section-label">大項目</span>
+        <label>
+          <span>大項目名稱</span>
+          <input data-detail-index="${index}" data-detail-field="name" type="text" value="${escapeHtml(detail.name)}" ${editable ? "" : "disabled"}>
+        </label>
+        <button class="secondary-button" data-add-child-detail="${index}" type="button" ${editable ? "" : "disabled"}><span class="button-icon" aria-hidden="true">＋</span>小支項</button>
+        <button class="delete-row" data-delete-detail="${index}" type="button" aria-label="刪除大項目" title="刪除" ${editable ? "" : "disabled"}>×</button>
+      `;
+      detailsContainer.appendChild(row);
+      return;
+    }
     const totals = detailTotals(detail);
     const row = document.createElement("article");
     row.className = "detail-row";
@@ -1705,7 +1762,7 @@ function renderDetails() {
       <button class="drag-handle" type="button" aria-label="拖曳排序" title="拖曳排序" ${editable ? "" : "disabled"}>⋮⋮</button>
       <span class="detail-index">${index + 1}</span>
       <label>
-        <span>明細表單</span>
+        <span>小支項</span>
         <input data-detail-index="${index}" data-detail-field="name" type="text" value="${escapeHtml(detail.name)}" ${editable ? "" : "disabled"}>
       </label>
       <label>
@@ -1786,6 +1843,9 @@ function toNumber(value) {
 }
 
 function detailTotals(detail) {
+  if (isSectionDetail(detail)) {
+    return { amount: 0, costAmount: 0, profit: 0, margin: 0 };
+  }
   const amount = toNumber(detail.qty) * toNumber(detail.price);
   const costAmount = toNumber(detail.qty) * toNumber(detail.cost);
   const profit = amount - costAmount;
@@ -1794,8 +1854,9 @@ function detailTotals(detail) {
 }
 
 function summaryTotals(invoice = state.activeInvoice) {
-  const subtotal = invoice.details.reduce((sum, detail) => sum + detailTotals(detail).amount, 0);
-  const costTotal = invoice.details.reduce((sum, detail) => sum + detailTotals(detail).costAmount, 0);
+  const billableDetails = getBillableDetails(invoice);
+  const subtotal = billableDetails.reduce((sum, detail) => sum + detailTotals(detail).amount, 0);
+  const costTotal = billableDetails.reduce((sum, detail) => sum + detailTotals(detail).costAmount, 0);
   const discountTotal = invoice.info.hasDiscount ? Math.min(toNumber(invoice.info.discountAmount), subtotal) : 0;
   const netSubtotal = Math.max(subtotal - discountTotal, 0);
   const taxRate = invoice.info.isTaxIncluded ? toNumber(invoice.info.taxRate) : 0;
@@ -1838,13 +1899,13 @@ function renderFormulaPanel(totals = summaryTotals()) {
   const taxRate = info.isTaxIncluded ? toNumber(info.taxRate) : 0;
   const retentionRate = info.hasRetention ? toNumber(info.retentionRate) : 0;
   formulaList.innerHTML = `
-    <div><strong>請款小計</strong><span>各明細「數量 × 請款單價」加總 = ${formatCurrency(totals.subtotal)}</span></div>
+    <div><strong>請款小計</strong><span>各小支項「數量 × 請款單價」加總 = ${formatCurrency(totals.subtotal)}</span></div>
     <div><strong>折扣費用</strong><span>${info.hasDiscount ? `輸入折扣 = ${formatCurrency(totals.discountTotal)}` : "未勾選，不列入折扣"}</span></div>
     <div><strong>折扣後小計</strong><span>${formatCurrency(totals.subtotal)} - ${formatCurrency(totals.discountTotal)} = ${formatCurrency(totals.netSubtotal)}</span></div>
     <div><strong>稅額</strong><span>${info.isTaxIncluded ? `${formatCurrency(totals.netSubtotal)} × ${formatRate(taxRate)} = ${formatCurrency(totals.taxTotal)}` : "未勾選含稅，稅額為 $0"}</span></div>
     <div><strong>保留款</strong><span>${info.hasRetention ? `${formatCurrency(totals.netSubtotal)} × ${formatRate(retentionRate)} = ${formatCurrency(totals.retentionTotal)}` : "未勾選保留款，保留款為 $0"}</span></div>
     <div><strong>本期應收</strong><span>${formatCurrency(totals.netSubtotal)} + ${formatCurrency(totals.taxTotal)} - ${formatCurrency(totals.retentionTotal)} = ${formatCurrency(totals.grandTotal)}</span></div>
-    <div><strong>內部成本</strong><span>各明細「數量 × 成本單價」加總 = ${formatCurrency(totals.costTotal)}</span></div>
+    <div><strong>內部成本</strong><span>各小支項「數量 × 成本單價」加總 = ${formatCurrency(totals.costTotal)}</span></div>
     <div><strong>預估利潤</strong><span>${formatCurrency(totals.netSubtotal)} - ${formatCurrency(totals.costTotal)} = ${formatCurrency(totals.profitTotal)}</span></div>
     <div><strong>平均毛利率</strong><span>${formatCurrency(totals.profitTotal)} ÷ ${formatCurrency(totals.netSubtotal)} = ${formatPercent(totals.marginTotal)}</span></div>
   `;
@@ -1866,9 +1927,32 @@ function addDetail() {
   detailsContainer.lastElementChild?.querySelector("input")?.focus();
 }
 
+function addSection() {
+  if (!canEditInvoice()) return;
+  state.activeInvoice.details.push(createEmptySection(), createEmptyDetail());
+  renderDetails();
+  renderSummary();
+  markActiveInvoiceDirty();
+  const sectionRows = detailsContainer.querySelectorAll(".detail-section-row");
+  sectionRows[sectionRows.length - 1]?.querySelector("input")?.focus();
+}
+
+function addChildDetail(sectionIndex) {
+  if (!canEditInvoice()) return;
+  let insertAt = sectionIndex + 1;
+  while (insertAt < state.activeInvoice.details.length && !isSectionDetail(state.activeInvoice.details[insertAt])) {
+    insertAt += 1;
+  }
+  state.activeInvoice.details.splice(insertAt, 0, createEmptyDetail());
+  renderDetails();
+  renderSummary();
+  markActiveInvoiceDirty();
+  detailsContainer.querySelector(`[data-index="${insertAt}"] input`)?.focus();
+}
+
 function copySelectedDetails() {
   if (!canEditInvoice()) return;
-  const selected = state.activeInvoice.details.filter((detail) => state.selectedDetailIds.has(detail.id));
+  const selected = state.activeInvoice.details.filter((detail) => !isSectionDetail(detail) && state.selectedDetailIds.has(detail.id));
   if (selected.length === 0) return;
   const copies = selected.map((detail) => ({ ...detail, id: createId("detail"), name: `${detail.name || "未命名明細"} 複製` }));
   state.activeInvoice.details.push(...copies);
@@ -1883,10 +1967,9 @@ function deleteSelectedDetails() {
   const count = state.selectedDetailIds.size;
   if (count === 0) return;
   requestDeleteConfirmation(`確定刪除 ${count} 筆已勾選明細？刪除後無法復原。`, () => {
-    if (state.activeInvoice.details.length === count) {
-      state.activeInvoice.details = [createEmptyDetail()];
-    } else {
-      state.activeInvoice.details = state.activeInvoice.details.filter((detail) => !state.selectedDetailIds.has(detail.id));
+    state.activeInvoice.details = state.activeInvoice.details.filter((detail) => isSectionDetail(detail) || !state.selectedDetailIds.has(detail.id));
+    if (getBillableDetails(state.activeInvoice).length === 0) {
+      state.activeInvoice.details.push(createEmptyDetail());
     }
     state.selectedDetailIds.clear();
     renderDetails();
@@ -1897,12 +1980,16 @@ function deleteSelectedDetails() {
 
 function deleteDetail(index) {
   if (!canEditInvoice()) return;
-  requestDeleteConfirmation("確定刪除此筆明細？刪除後無法復原。", () => {
+  const target = state.activeInvoice.details[index];
+  const label = isSectionDetail(target) ? "大項目" : "小支項";
+  requestDeleteConfirmation(`確定刪除此${label}？刪除後無法復原。`, () => {
     const removed = state.activeInvoice.details[index];
-    if (state.activeInvoice.details.length === 1) {
-      state.activeInvoice.details[0] = createEmptyDetail();
-    } else {
-      state.activeInvoice.details.splice(index, 1);
+    state.activeInvoice.details.splice(index, 1);
+    if (state.activeInvoice.details.length === 0) {
+      state.activeInvoice.details = [createEmptySection(), createEmptyDetail()];
+    }
+    if (getBillableDetails(state.activeInvoice).length === 0) {
+      state.activeInvoice.details.push(createEmptyDetail());
     }
     if (removed) state.selectedDetailIds.delete(removed.id);
     renderDetails();
@@ -1912,7 +1999,7 @@ function deleteDetail(index) {
 }
 
 function updateBulkActionState() {
-  const total = state.activeInvoice?.details.length || 0;
+  const total = getBillableDetails(state.activeInvoice).length;
   const selected = state.selectedDetailIds.size;
   const editable = canEditInvoice();
   selectAllDetails.checked = total > 0 && selected === total;
@@ -1976,6 +2063,7 @@ function applyFormPermissions() {
   });
   updateConditionalFields();
   document.querySelector("#addDetailButton").disabled = !editable;
+  addSectionButton.disabled = !editable;
   copySelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
   deleteSelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
   selectAllDetails.disabled = !editable;
@@ -1987,6 +2075,7 @@ function applyFormPermissions() {
 
 function updateVisibleDetailTotals(index) {
   const detail = state.activeInvoice.details[index];
+  if (isSectionDetail(detail)) return;
   const totals = detailTotals(detail);
   const row = detailsContainer.querySelector(`[data-index="${index}"]`);
   row.querySelector('[data-detail-output="amount"]').textContent = formatCurrency(totals.amount);
@@ -2274,6 +2363,12 @@ function buildPdfDocument(type, invoice) {
         white-space: nowrap;
       }
 
+      .section-row td {
+        background: #eef3f8;
+        color: #13294b;
+        font-weight: 900;
+      }
+
       .details-table .index-col {
         width: 6%;
       }
@@ -2459,6 +2554,8 @@ function buildPdfDocument(type, invoice) {
 }
 
 function buildPdfMeta(info) {
+  const taxMeta = info.isTaxIncluded ? buildPdfMetaItem("稅務", `含稅 ${formatRate(info.taxRate)}`) : buildPdfMetaItem("稅務", "未稅");
+  const retentionMeta = info.hasRetention ? buildPdfMetaItem("保留款", formatRate(info.retentionRate)) : "";
   return `<section class="meta-grid" aria-label="工程資料">
     ${buildPdfMetaItem("工程名稱", info.projectName)}
     ${buildPdfMetaItem("業主/上游包商", info.clientName)}
@@ -2470,7 +2567,8 @@ function buildPdfMeta(info) {
     ${buildPdfMetaItem("請款期間", info.billingPeriod)}
     ${buildPdfMetaItem("付款方式", getPaymentMethodLabel(info))}
     ${buildPdfMetaItem("付款條件", info.paymentTerms)}
-    ${buildPdfMetaItem("稅務 / 保留款", `${info.isTaxIncluded ? `含稅 ${formatRate(info.taxRate)}` : "未稅"} / ${info.hasRetention ? formatRate(info.retentionRate) : "無保留款"}`)}
+    ${taxMeta}
+    ${retentionMeta}
   </section>`;
 }
 
@@ -2483,17 +2581,7 @@ function buildPdfMetaItem(label, value) {
 
 function buildClientPdfBody(invoice) {
   const totals = summaryTotals(invoice);
-  const rows = invoice.details.map((detail, index) => {
-    const detailSummary = detailTotals(detail);
-    return `<tr>
-      <td class="index">${index + 1}</td>
-      <td>${escapeHtml(detail.name || "-")}</td>
-      <td class="unit">${escapeHtml(detail.unit || "-")}</td>
-      <td class="qty">${formatQuantity(detail.qty)}</td>
-      <td class="amount">${formatCurrency(detail.price)}</td>
-      <td class="amount">${formatCurrency(detailSummary.amount)}</td>
-    </tr>`;
-  }).join("");
+  const rows = buildPdfDetailRows(invoice, false);
 
   return `<section>
     <h2 class="section-title">請款明細</h2>
@@ -2501,7 +2589,7 @@ function buildClientPdfBody(invoice) {
       <thead>
         <tr>
           <th class="index-col">序號</th>
-          <th class="name-col">明細表單</th>
+          <th class="name-col">請款明細</th>
           <th class="unit-col">單位</th>
           <th class="qty-col">數量</th>
           <th class="amount-col">單價</th>
@@ -2514,12 +2602,16 @@ function buildClientPdfBody(invoice) {
   </section>`;
 }
 
-function buildInternalPdfBody(invoice) {
-  const totals = summaryTotals(invoice);
-  const rows = invoice.details.map((detail, index) => {
+function buildPdfDetailRows(invoice, includeInternal) {
+  let itemIndex = 0;
+  return invoice.details.map((detail) => {
+    if (isSectionDetail(detail)) {
+      return `<tr class="section-row"><td colspan="${includeInternal ? 10 : 6}">${escapeHtml(detail.name || "未命名大項目")}</td></tr>`;
+    }
+    itemIndex += 1;
     const detailSummary = detailTotals(detail);
-    return `<tr>
-      <td class="index">${index + 1}</td>
+    return includeInternal ? `<tr>
+      <td class="index">${itemIndex}</td>
       <td>${escapeHtml(detail.name || "-")}</td>
       <td class="unit">${escapeHtml(detail.unit || "-")}</td>
       <td class="qty">${formatQuantity(detail.qty)}</td>
@@ -2529,8 +2621,20 @@ function buildInternalPdfBody(invoice) {
       <td class="amount">${formatCurrency(detailSummary.costAmount)}</td>
       <td class="amount">${formatCurrency(detailSummary.profit)}</td>
       <td class="percent">${formatPercent(detailSummary.margin)}</td>
+    </tr>` : `<tr>
+      <td class="index">${itemIndex}</td>
+      <td>${escapeHtml(detail.name || "-")}</td>
+      <td class="unit">${escapeHtml(detail.unit || "-")}</td>
+      <td class="qty">${formatQuantity(detail.qty)}</td>
+      <td class="amount">${formatCurrency(detail.price)}</td>
+      <td class="amount">${formatCurrency(detailSummary.amount)}</td>
     </tr>`;
   }).join("");
+}
+
+function buildInternalPdfBody(invoice) {
+  const totals = summaryTotals(invoice);
+  const rows = buildPdfDetailRows(invoice, true);
 
   return `<section>
     <h2 class="section-title">請款明細</h2>
@@ -2538,7 +2642,7 @@ function buildInternalPdfBody(invoice) {
       <thead>
         <tr>
           <th class="index-col">序號</th>
-          <th class="name-col">明細表單</th>
+          <th class="name-col">請款明細</th>
           <th class="unit-col">單位</th>
           <th class="qty-col">數量</th>
           <th class="amount-col">請款單價</th>
@@ -2560,6 +2664,13 @@ function buildPdfSummary(totals, info, includeInternal) {
   const taxRow = info.isTaxIncluded
     ? `<tr><th>營業稅 ${escapeHtml(formatRate(info.taxRate))}</th><td>${formatCurrency(totals.taxTotal)}</td></tr>`
     : "";
+  const discountRows = info.hasDiscount
+    ? `<tr><th>折扣費用</th><td>${formatCurrency(totals.discountTotal)}</td></tr>
+       <tr><th>折扣後小計</th><td>${formatCurrency(totals.netSubtotal)}</td></tr>`
+    : "";
+  const retentionRow = info.hasRetention
+    ? `<tr><th>保留款 ${escapeHtml(formatRate(info.retentionRate))}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>`
+    : "";
   const internalRows = includeInternal
     ? `<tr><th>成本合計</th><td>${formatCurrency(totals.costTotal)}</td></tr>
        <tr><th>預估利潤</th><td>${formatCurrency(totals.profitTotal)}</td></tr>
@@ -2574,10 +2685,9 @@ function buildPdfSummary(totals, info, includeInternal) {
     <table class="summary-table">
       <tbody>
         <tr><th>請款小計</th><td>${formatCurrency(totals.subtotal)}</td></tr>
-        <tr><th>折扣費用</th><td>${formatCurrency(totals.discountTotal)}</td></tr>
-        <tr><th>折扣後小計</th><td>${formatCurrency(totals.netSubtotal)}</td></tr>
+        ${discountRows}
         ${taxRow}
-        <tr><th>${info.hasRetention ? `保留款 ${escapeHtml(formatRate(info.retentionRate))}` : "保留款"}</th><td>${formatCurrency(totals.retentionTotal)}</td></tr>
+        ${retentionRow}
         <tr class="grand"><th>本期應收</th><td>${formatCurrency(totals.grandTotal)}</td></tr>
         ${internalRows}
       </tbody>
@@ -2630,7 +2740,7 @@ function renderAdminAccounts() {
       <span class="role-pill">${account.role === "admin" ? "Admin" : "User"}</span>
       <span class="status-pill ${account.disabled ? "is-disabled" : ""}">${account.disabled ? "停用" : "啟用"}</span>
       <button class="secondary-button" type="button" data-toggle-account="${account.memberCode}" ${account.memberCode === state.currentUser.memberCode ? "disabled" : ""}>${account.disabled ? "啟用" : "停用"}</button>
-      <button class="secondary-button danger-button" type="button" data-delete-account="${account.memberCode}" ${account.role === "admin" ? "disabled" : ""}>刪除</button>
+      <button class="secondary-button danger-button" type="button" data-delete-account="${account.memberCode}" ${account.memberCode === state.currentUser.memberCode ? "disabled" : ""}>刪除</button>
     `;
     adminAccountList.appendChild(row);
   });
@@ -2687,7 +2797,7 @@ function toggleAccount(memberCode) {
 
 function deleteAccount(memberCode) {
   const account = state.accounts.find((item) => item.memberCode === memberCode);
-  if (!account || account.role === "admin") return;
+  if (!account || account.memberCode === state.currentUser.memberCode) return;
   state.accounts = state.accounts.filter((item) => item.memberCode !== memberCode);
   localStorage.removeItem(`${VAULT_PREFIX}${memberCode}`);
   state.invitations = state.invitations.filter((invite) => invite.fromMemberCode !== memberCode && invite.toMemberCode !== memberCode);
@@ -2818,7 +2928,7 @@ deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
 selectAllDetails.addEventListener("change", () => {
   if (!canEditInvoice()) return;
   if (selectAllDetails.checked) {
-    state.selectedDetailIds = new Set(state.activeInvoice.details.map((detail) => detail.id));
+    state.selectedDetailIds = new Set(getBillableDetails(state.activeInvoice).map((detail) => detail.id));
   } else {
     state.selectedDetailIds.clear();
   }
@@ -2832,6 +2942,7 @@ cancelCloseButton.addEventListener("click", closeCloseConfirm);
 cancelCloseActionButton.addEventListener("click", closeCloseConfirm);
 toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
 saveInvoiceButton.addEventListener("click", openEditLogPanel);
+addSectionButton.addEventListener("click", addSection);
 document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 
 invoiceSearchInput.addEventListener("input", () => {
@@ -2925,7 +3036,9 @@ detailsContainer.addEventListener("input", (event) => {
     const field = target.dataset.detailField;
     state.activeInvoice.details[detailIndex][field] = target.type === "number" ? toNumber(target.value) : target.value;
     renderSummary();
-    updateVisibleDetailTotals(detailIndex);
+    if (!isSectionDetail(state.activeInvoice.details[detailIndex])) {
+      updateVisibleDetailTotals(detailIndex);
+    }
     markActiveInvoiceDirty();
   }
 });
@@ -2933,6 +3046,11 @@ detailsContainer.addEventListener("input", (event) => {
 detailsContainer.addEventListener("click", (event) => {
   if (!canEditInvoice()) return;
   const selectDetail = event.target.closest("[data-select-detail]");
+  const addChildButton = event.target.closest("[data-add-child-detail]");
+  if (addChildButton) {
+    addChildDetail(Number(addChildButton.dataset.addChildDetail));
+    return;
+  }
   if (selectDetail) {
     if (selectDetail.checked) {
       state.selectedDetailIds.add(selectDetail.dataset.selectDetail);

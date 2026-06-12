@@ -127,6 +127,7 @@
         <details class="fold-panel" open>
           <summary>
             <span>共同編輯</span>
+            <span class="summary-count-pill" id="collaborationCountPill">0 人共用</span>
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
           <section class="invite-panel collaboration-panel" aria-label="共同編輯">
@@ -325,19 +326,20 @@
 
         <details class="fold-panel" open>
           <summary>
-            <span>明細表單</span>
+            <span>請款明細</span>
             <span class="fold-icon" aria-hidden="true"></span>
           </summary>
-          <section class="items-panel" aria-label="明細表單">
+          <section class="items-panel" aria-label="請款明細">
           <div class="items-heading">
             <div>
-              <h2>明細表單</h2>
-              <p>拖曳左側把手可調整順序；對外請款 PDF 會隱藏成本、利潤與毛利率。</p>
+              <h2>請款明細</h2>
+              <p>可新增大項目與小支項，拖曳左側把手可調整順序。</p>
             </div>
             <div class="inline-actions">
               <button class="secondary-button" id="copySelectedDetailsButton" type="button" disabled>複製勾選</button>
               <button class="secondary-button danger-button" id="deleteSelectedDetailsButton" type="button" disabled>刪除勾選</button>
-              <button class="secondary-button" id="addDetailButton" type="button">新增明細</button>
+              <button class="secondary-button" id="addSectionButton" type="button">新增大項目</button>
+              <button class="secondary-button" id="addDetailButton" type="button">新增小支項</button>
             </div>
           </div>
           <div class="detail-header">
@@ -346,7 +348,7 @@
             </span>
             <span></span>
             <span>#</span>
-            <span>明細表單</span>
+            <span>請款明細</span>
             <span>單位</span>
             <span>數量</span>
             <span>請款單價</span>
