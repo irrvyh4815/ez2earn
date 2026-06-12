@@ -12,10 +12,21 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612006";
+const APP_VERSION = "ez2earn_260612007";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "通知與留言板展開後會自動標示已讀並移除紅點。",
+      "主列表新增共同編輯與自身權限狀態標籤。",
+      "主頁新增期間、狀態篩選的收支統計與圓餅圖。",
+      "請款明細調整為先建立大項目，再新增其下小支項。",
+      "匯出新增自留存與業主端 Excel 檔。"
+    ]
+  },
+  {
+    version: "ez2earn_260612006",
     date: "2026/06/12",
     items: [
       "請款明細新增大項目與小支項分類輸入。",
@@ -140,7 +151,10 @@ const state = {
   draggedDetailId: null,
   pointerDragId: null,
   pointerDropId: null,
-  invoiceSearchQuery: ""
+  invoiceSearchQuery: "",
+  statsPeriodType: "year",
+  statsStatusFilter: "closed",
+  statsReferenceDate: new Date().toISOString().slice(0, 10)
 };
 
 const currencyFormatter = new Intl.NumberFormat("zh-TW", {
@@ -164,6 +178,13 @@ const authMessage = document.querySelector("#authMessage");
 const invoiceList = document.querySelector("#invoiceList");
 const invoiceCount = document.querySelector("#invoiceCount");
 const invoiceSearchInput = document.querySelector("#invoiceSearchInput");
+const statsPeriodType = document.querySelector("#statsPeriodType");
+const statsReferenceDate = document.querySelector("#statsReferenceDate");
+const statsStatusFilter = document.querySelector("#statsStatusFilter");
+const statsRangeLabel = document.querySelector("#statsRangeLabel");
+const statsPie = document.querySelector("#statsPie");
+const statsLegend = document.querySelector("#statsLegend");
+const statsCards = document.querySelector("#statsCards");
 const noticeList = document.querySelector("#noticeList");
 const noticeCount = document.querySelector("#noticeCount");
 const detailsContainer = document.querySelector("#detailsContainer");
@@ -294,6 +315,9 @@ async function initApp() {
   state.invitations = loadInvitations();
   ensureAdminAccount();
   renderVersionLabels();
+  statsReferenceDate.value = state.statsReferenceDate;
+  statsPeriodType.value = state.statsPeriodType;
+  statsStatusFilter.value = state.statsStatusFilter;
   showAuth();
 }
 
@@ -928,6 +952,14 @@ function isSharedInvoice(invoice) {
   return Boolean(invoice && state.currentUser && invoice.ownerMemberCode !== state.currentUser.memberCode && canAccessInvoice(invoice));
 }
 
+function getListRoleLabel(invoice) {
+  const role = getCurrentInvoiceRole(invoice);
+  if (role === "creator") return "表單建立者";
+  if (role === "editor") return "編輯者";
+  if (role === "viewer") return "檢視者";
+  return "";
+}
+
 function cloneData(value) {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
 }
@@ -969,6 +1001,7 @@ function showList() {
     renderCurrentUser();
     renderNotices();
     renderInvoiceList();
+    renderStatsDashboard();
     updateSessionSidebar(true);
   };
 
@@ -1054,6 +1087,7 @@ async function copyInvoice(invoiceId) {
   state.invoices.unshift(copy);
   await persistInvoices();
   renderInvoiceList();
+  renderStatsDashboard();
   renderLastSaved();
 }
 
@@ -1084,6 +1118,7 @@ function deleteInvoice(invoiceId, options = {}) {
       return;
     }
     renderInvoiceList();
+    renderStatsDashboard();
     renderLastSaved();
   });
 }
@@ -1347,12 +1382,18 @@ function renderInvoiceGroup(title, invoices) {
 
   invoices.forEach((invoice) => {
     const totals = summaryTotals(invoice);
-    const isShared = isSharedInvoice(invoice);
+    const isCollaborative = canAccessInvoice(invoice);
+    const roleLabel = getListRoleLabel(invoice);
     const card = document.createElement("article");
     card.className = `invoice-card${invoice.isClosed ? " is-closed" : ""}`;
     card.innerHTML = `
         <div>
-          <h2>${escapeHtml(invoice.info.projectName || "未命名工程")} ${isShared ? '<span class="collab-pill">共同編輯</span>' : ""} ${invoice.isClosed ? '<span class="status-pill">已結案</span>' : ""}</h2>
+          <h2>
+            ${escapeHtml(invoice.info.projectName || "未命名工程")}
+            ${isCollaborative ? '<span class="collab-pill">共同編輯</span>' : ""}
+            ${roleLabel ? `<span class="role-pill ${roleLabel === "檢視者" ? "is-viewer" : ""}">${escapeHtml(roleLabel)}</span>` : ""}
+            ${invoice.isClosed ? '<span class="status-pill">已結案</span>' : ""}
+          </h2>
           <p>${escapeHtml(invoice.info.invoiceNo || "未填單號")} · ${escapeHtml(invoice.info.clientName || "未填業主")}</p>
         </div>
         <div class="invoice-card-meta">
@@ -1369,6 +1410,142 @@ function renderInvoiceGroup(title, invoices) {
   });
 
   invoiceList.appendChild(group);
+}
+
+function renderStatsDashboard() {
+  if (!state.currentUser) return;
+  statsPeriodType.value = state.statsPeriodType;
+  statsStatusFilter.value = state.statsStatusFilter;
+  statsReferenceDate.value = state.statsReferenceDate;
+
+  const range = getStatsRange();
+  const ownedInvoices = state.invoices.filter((invoice) => invoice.ownerMemberCode === state.currentUser.memberCode);
+  const filtered = ownedInvoices.filter((invoice) => {
+    if (state.statsStatusFilter === "closed" && !invoice.isClosed) return false;
+    if (state.statsStatusFilter === "ongoing" && invoice.isClosed) return false;
+    return isInvoiceInStatsRange(invoice, range);
+  });
+  const totals = filtered.reduce((sum, invoice) => {
+    const item = summaryTotals(invoice);
+    sum.subtotal += item.subtotal;
+    sum.netSubtotal += item.netSubtotal;
+    sum.costTotal += item.costTotal;
+    sum.taxTotal += item.taxTotal;
+    sum.retentionTotal += item.retentionTotal;
+    sum.discountTotal += item.discountTotal;
+    sum.grandTotal += item.grandTotal;
+    sum.profitTotal += item.profitTotal;
+    return sum;
+  }, {
+    subtotal: 0,
+    netSubtotal: 0,
+    costTotal: 0,
+    taxTotal: 0,
+    retentionTotal: 0,
+    discountTotal: 0,
+    grandTotal: 0,
+    profitTotal: 0
+  });
+
+  const chartItems = [
+    { label: "成本", value: totals.costTotal, color: "#315f9d" },
+    { label: "盈餘", value: Math.max(totals.profitTotal, 0), color: "#0f8b6f" },
+    { label: "稅金", value: totals.taxTotal, color: "#9a6b16" },
+    { label: "保留款", value: totals.retentionTotal, color: "#7c6bb0" },
+    { label: "折扣", value: totals.discountTotal, color: "#b54747" }
+  ].filter((item) => item.value > 0);
+  renderStatsPie(chartItems);
+  renderStatsCards(totals, filtered.length);
+  statsRangeLabel.textContent = `${getStatsRangeLabel(range)} · ${getStatsStatusLabel()} · ${filtered.length} 張`;
+}
+
+function renderStatsPie(items) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) {
+    statsPie.style.background = "#eef3f8";
+    statsLegend.innerHTML = `<p class="empty-state">目前沒有可統計資料。</p>`;
+    return;
+  }
+  let start = 0;
+  const gradients = items.map((item) => {
+    const size = (item.value / total) * 100;
+    const segment = `${item.color} ${start}% ${start + size}%`;
+    start += size;
+    return segment;
+  });
+  statsPie.style.background = `conic-gradient(${gradients.join(", ")})`;
+  statsLegend.innerHTML = items.map((item) => `
+    <div>
+      <span class="legend-swatch" style="background:${item.color}"></span>
+      <strong>${escapeHtml(item.label)}</strong>
+      <em>${formatCurrency(item.value)}</em>
+    </div>
+  `).join("");
+}
+
+function renderStatsCards(totals, count) {
+  const cards = [
+    ["表單數", `${count} 張`],
+    ["請款小計", formatCurrency(totals.subtotal)],
+    ["折扣", formatCurrency(totals.discountTotal)],
+    ["稅金", formatCurrency(totals.taxTotal)],
+    ["保留款", formatCurrency(totals.retentionTotal)],
+    ["成本", formatCurrency(totals.costTotal)],
+    ["盈餘", formatCurrency(totals.profitTotal)],
+    ["本期應收", formatCurrency(totals.grandTotal)]
+  ];
+  statsCards.innerHTML = cards.map(([label, value]) => `
+    <article class="stats-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </article>
+  `).join("");
+}
+
+function getStatsRange() {
+  if (state.statsPeriodType === "all") return { type: "all", start: null, end: null };
+  const reference = parseDateInput(state.statsReferenceDate);
+  const start = new Date(reference);
+  const end = new Date(reference);
+  if (state.statsPeriodType === "year") {
+    start.setMonth(0, 1);
+    end.setMonth(11, 31);
+  } else if (state.statsPeriodType === "month") {
+    start.setDate(1);
+    end.setMonth(end.getMonth() + 1, 0);
+  } else {
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+    end.setTime(start.getTime());
+    end.setDate(start.getDate() + 6);
+  }
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+  return { type: state.statsPeriodType, start, end };
+}
+
+function parseDateInput(value) {
+  const parsed = new Date(`${value || new Date().toISOString().slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function isInvoiceInStatsRange(invoice, range) {
+  if (range.type === "all") return true;
+  const dateSource = invoice.isClosed ? invoice.closedAt : invoice.updatedAt;
+  const date = new Date(dateSource || invoice.updatedAt);
+  if (Number.isNaN(date.getTime())) return false;
+  return date >= range.start && date <= range.end;
+}
+
+function getStatsRangeLabel(range) {
+  if (range.type === "all") return "全部期間";
+  return `${formatDateOnly(range.start)} - ${formatDateOnly(range.end)}`;
+}
+
+function getStatsStatusLabel() {
+  if (state.statsStatusFilter === "closed") return "已結案";
+  if (state.statsStatusFilter === "ongoing") return "進行中";
+  return "全部狀態";
 }
 
 function getNoticeItems() {
@@ -1412,6 +1589,21 @@ function renderNotices() {
 function toggleNoticePanel() {
   const isOpen = noticePanel.classList.toggle("is-collapsed") === false;
   noticeToggle.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) {
+    markNoticesRead();
+  }
+}
+
+function markNoticesRead() {
+  let didUpdate = false;
+  state.invitations.forEach((notice) => {
+    if (notice.toMemberCode === state.currentUser.memberCode && !notice.read) {
+      notice.read = true;
+      didUpdate = true;
+    }
+  });
+  if (didUpdate) saveInvitations();
+  renderNotices();
 }
 
 function getInvoiceEditors(invoice = state.activeInvoice) {
@@ -1746,6 +1938,7 @@ function renderDetails() {
           <input data-detail-index="${index}" data-detail-field="name" type="text" value="${escapeHtml(detail.name)}" ${editable ? "" : "disabled"}>
         </label>
         <button class="secondary-button" data-add-child-detail="${index}" type="button" ${editable ? "" : "disabled"}><span class="button-icon" aria-hidden="true">＋</span>小支項</button>
+        <button class="secondary-button icon-only" data-copy-section="${index}" type="button" aria-label="複製大項目" title="複製大項目" ${editable ? "" : "disabled"}>⧉</button>
         <button class="delete-row" data-delete-detail="${index}" type="button" aria-label="刪除大項目" title="刪除" ${editable ? "" : "disabled"}>×</button>
       `;
       detailsContainer.appendChild(row);
@@ -1920,19 +2113,40 @@ function toggleFormulaPanel(event) {
 
 function addDetail() {
   if (!canEditInvoice()) return;
-  state.activeInvoice.details.push(createEmptyDetail());
+  const sectionIndex = ensureDetailSection();
+  addChildDetail(sectionIndex);
+}
+
+function ensureDetailSection() {
+  let sectionIndex = state.activeInvoice.details.map(isSectionDetail).lastIndexOf(true);
+  if (sectionIndex >= 0) return sectionIndex;
+  state.activeInvoice.details.unshift(createEmptySection());
+  return 0;
+}
+
+function ensureDetailStructure() {
+  if (!state.activeInvoice.details.some(isSectionDetail)) {
+    state.activeInvoice.details.unshift(createEmptySection());
+  }
+  if (getBillableDetails(state.activeInvoice).length === 0) {
+    const sectionIndex = ensureDetailSection();
+    state.activeInvoice.details.splice(sectionIndex + 1, 0, createEmptyDetail());
+  }
+}
+
+function renderDetailChanges(focusSelector = null) {
   renderDetails();
   renderSummary();
   markActiveInvoiceDirty();
-  detailsContainer.lastElementChild?.querySelector("input")?.focus();
+  if (focusSelector) {
+    detailsContainer.querySelector(focusSelector)?.focus();
+  }
 }
 
 function addSection() {
   if (!canEditInvoice()) return;
   state.activeInvoice.details.push(createEmptySection(), createEmptyDetail());
-  renderDetails();
-  renderSummary();
-  markActiveInvoiceDirty();
+  renderDetailChanges();
   const sectionRows = detailsContainer.querySelectorAll(".detail-section-row");
   sectionRows[sectionRows.length - 1]?.querySelector("input")?.focus();
 }
@@ -1940,14 +2154,33 @@ function addSection() {
 function addChildDetail(sectionIndex) {
   if (!canEditInvoice()) return;
   let insertAt = sectionIndex + 1;
-  while (insertAt < state.activeInvoice.details.length && !isSectionDetail(state.activeInvoice.details[insertAt])) {
-    insertAt += 1;
-  }
+  insertAt = findSectionEnd(sectionIndex);
   state.activeInvoice.details.splice(insertAt, 0, createEmptyDetail());
-  renderDetails();
-  renderSummary();
-  markActiveInvoiceDirty();
+  renderDetailChanges();
   detailsContainer.querySelector(`[data-index="${insertAt}"] input`)?.focus();
+}
+
+function findSectionEnd(sectionIndex) {
+  let endIndex = sectionIndex + 1;
+  while (endIndex < state.activeInvoice.details.length && !isSectionDetail(state.activeInvoice.details[endIndex])) {
+    endIndex += 1;
+  }
+  return endIndex;
+}
+
+function copySection(sectionIndex) {
+  if (!canEditInvoice()) return;
+  const sourceSection = state.activeInvoice.details[sectionIndex];
+  if (!sourceSection || !isSectionDetail(sourceSection)) return;
+
+  const endIndex = findSectionEnd(sectionIndex);
+  const copies = state.activeInvoice.details.slice(sectionIndex, endIndex).map((detail, copyIndex) => ({
+    ...detail,
+    id: createId(copyIndex === 0 ? "section" : "detail"),
+    name: copyIndex === 0 ? `${detail.name || "未命名大項目"} 複製` : detail.name
+  }));
+  state.activeInvoice.details.splice(endIndex, 0, ...copies);
+  renderDetailChanges(`[data-index="${endIndex}"] input`);
 }
 
 function copySelectedDetails() {
@@ -1955,11 +2188,10 @@ function copySelectedDetails() {
   const selected = state.activeInvoice.details.filter((detail) => !isSectionDetail(detail) && state.selectedDetailIds.has(detail.id));
   if (selected.length === 0) return;
   const copies = selected.map((detail) => ({ ...detail, id: createId("detail"), name: `${detail.name || "未命名明細"} 複製` }));
+  ensureDetailSection();
   state.activeInvoice.details.push(...copies);
   state.selectedDetailIds = new Set(copies.map((detail) => detail.id));
-  renderDetails();
-  renderSummary();
-  markActiveInvoiceDirty();
+  renderDetailChanges();
 }
 
 function deleteSelectedDetails() {
@@ -1968,33 +2200,27 @@ function deleteSelectedDetails() {
   if (count === 0) return;
   requestDeleteConfirmation(`確定刪除 ${count} 筆已勾選明細？刪除後無法復原。`, () => {
     state.activeInvoice.details = state.activeInvoice.details.filter((detail) => isSectionDetail(detail) || !state.selectedDetailIds.has(detail.id));
-    if (getBillableDetails(state.activeInvoice).length === 0) {
-      state.activeInvoice.details.push(createEmptyDetail());
-    }
+    ensureDetailStructure();
     state.selectedDetailIds.clear();
-    renderDetails();
-    renderSummary();
-    markActiveInvoiceDirty();
+    renderDetailChanges();
   });
 }
 
 function deleteDetail(index) {
   if (!canEditInvoice()) return;
   const target = state.activeInvoice.details[index];
-  const label = isSectionDetail(target) ? "大項目" : "小支項";
+  const isSection = isSectionDetail(target);
+  const label = isSection ? "大項目及其下小支項" : "小支項";
   requestDeleteConfirmation(`確定刪除此${label}？刪除後無法復原。`, () => {
     const removed = state.activeInvoice.details[index];
-    state.activeInvoice.details.splice(index, 1);
-    if (state.activeInvoice.details.length === 0) {
-      state.activeInvoice.details = [createEmptySection(), createEmptyDetail()];
+    if (isSection) {
+      state.activeInvoice.details.splice(index, findSectionEnd(index) - index);
+    } else {
+      state.activeInvoice.details.splice(index, 1);
     }
-    if (getBillableDetails(state.activeInvoice).length === 0) {
-      state.activeInvoice.details.push(createEmptyDetail());
-    }
+    ensureDetailStructure();
     if (removed) state.selectedDetailIds.delete(removed.id);
-    renderDetails();
-    renderSummary();
-    markActiveInvoiceDirty();
+    renderDetailChanges();
   });
 }
 
@@ -2089,8 +2315,17 @@ function moveDetail(fromId, toId) {
   const fromIndex = state.activeInvoice.details.findIndex((detail) => detail.id === fromId);
   const toIndex = state.activeInvoice.details.findIndex((detail) => detail.id === toId);
   if (fromIndex < 0 || toIndex < 0) return;
-  const [moved] = state.activeInvoice.details.splice(fromIndex, 1);
-  state.activeInvoice.details.splice(toIndex, 0, moved);
+  const movingSection = isSectionDetail(state.activeInvoice.details[fromIndex]);
+  const movingCount = movingSection ? findSectionEnd(fromIndex) - fromIndex : 1;
+  if (movingSection && toIndex > fromIndex && toIndex < fromIndex + movingCount) return;
+  const moved = state.activeInvoice.details.splice(fromIndex, movingCount);
+  let insertIndex = state.activeInvoice.details.findIndex((detail) => detail.id === toId);
+  if (insertIndex < 0) insertIndex = state.activeInvoice.details.length;
+  if (!movingSection && isSectionDetail(state.activeInvoice.details[insertIndex])) {
+    insertIndex += 1;
+  }
+  state.activeInvoice.details.splice(insertIndex, 0, ...moved);
+  ensureDetailStructure();
   renderDetails();
   markActiveInvoiceDirty();
 }
@@ -2184,6 +2419,127 @@ function exportPdf(type) {
   printWindow.document.close();
   printWindow.focus();
   setSaveStatus("PDF 文件已開啟，請在列印視窗選擇儲存為 PDF。");
+}
+
+function exportExcel(type) {
+  syncInfoFromInputs();
+  const isInternal = type === "internal";
+  const html = buildExcelWorkbook(isInternal, state.activeInvoice);
+  const filename = `${sanitizeFilename(state.activeInvoice.info.invoiceNo || "工程請款")}-${isInternal ? "自留存" : "請款"}.xls`;
+  downloadTextFile(filename, html, "application/vnd.ms-excel;charset=utf-8");
+  setSaveStatus("Excel 檔已匯出。");
+}
+
+function downloadTextFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  link.remove();
+}
+
+function buildExcelWorkbook(isInternal, invoice) {
+  const info = invoice.info;
+  const totals = summaryTotals(invoice);
+  const rows = buildExcelDetailRows(isInternal, invoice);
+  const summaryRows = buildExcelSummaryRows(totals, info, isInternal);
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      table { border-collapse: collapse; font-family: Microsoft JhengHei, Arial, sans-serif; }
+      th, td { border: 1px solid #9aa8ba; padding: 6px 8px; mso-number-format:"\\@"; }
+      th { background: #13294b; color: #ffffff; font-weight: 700; }
+      .title { background: #e8f0fb; color: #13294b; font-size: 18px; font-weight: 800; }
+      .section { background: #eef3f8; color: #13294b; font-weight: 800; }
+      .amount { mso-number-format:"#,##0"; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <table>
+      <tr><td class="title" colspan="${isInternal ? 10 : 6}">${isInternal ? "工程請款明細表" : "工程請款單"}</td></tr>
+      ${buildExcelInfoRows(info, isInternal ? 10 : 6)}
+      <tr></tr>
+      <tr>${isInternal
+        ? "<th>序號</th><th>請款明細</th><th>單位</th><th>數量</th><th>請款單價</th><th>成本單價</th><th>請款金額</th><th>成本</th><th>利潤</th><th>毛利率</th>"
+        : "<th>序號</th><th>請款明細</th><th>單位</th><th>數量</th><th>單價</th><th>金額</th>"
+      }</tr>
+      ${rows}
+      <tr></tr>
+      ${summaryRows}
+    </table>
+  </body>
+</html>`;
+}
+
+function buildExcelInfoRows(info, colspan) {
+  const rows = [
+    ["工程名稱", info.projectName],
+    ["請款單號", info.invoiceNo],
+    ["業主/上游包商", info.clientName],
+    ["業主統一編號", info.clientTaxId],
+    ["承攬廠商", info.contractorName],
+    ["承攬商統一編號", info.contractorTaxId],
+    ["請款期間", info.billingPeriod],
+    ["付款方式", getPaymentMethodLabel(info)],
+    ["付款條件", info.paymentTerms],
+    ["稅務", info.isTaxIncluded ? `含稅 ${formatRate(info.taxRate)}` : "未稅"]
+  ];
+  if (info.hasRetention) rows.push(["保留款", formatRate(info.retentionRate)]);
+  return rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td colspan="${colspan - 1}">${escapeHtml(value || "-")}</td></tr>`).join("");
+}
+
+function buildExcelDetailRows(isInternal, invoice) {
+  let itemIndex = 0;
+  return invoice.details.map((detail) => {
+    if (isSectionDetail(detail)) {
+      return `<tr><td class="section" colspan="${isInternal ? 10 : 6}">${escapeHtml(detail.name || "未命名大項目")}</td></tr>`;
+    }
+    itemIndex += 1;
+    const totals = detailTotals(detail);
+    return isInternal ? `<tr>
+      <td>${itemIndex}</td>
+      <td>${escapeHtml(detail.name || "-")}</td>
+      <td>${escapeHtml(detail.unit || "-")}</td>
+      <td class="amount">${formatQuantity(detail.qty)}</td>
+      <td class="amount">${Math.round(toNumber(detail.price))}</td>
+      <td class="amount">${Math.round(toNumber(detail.cost))}</td>
+      <td class="amount">${Math.round(totals.amount)}</td>
+      <td class="amount">${Math.round(totals.costAmount)}</td>
+      <td class="amount">${Math.round(totals.profit)}</td>
+      <td>${formatPercent(totals.margin)}</td>
+    </tr>` : `<tr>
+      <td>${itemIndex}</td>
+      <td>${escapeHtml(detail.name || "-")}</td>
+      <td>${escapeHtml(detail.unit || "-")}</td>
+      <td class="amount">${formatQuantity(detail.qty)}</td>
+      <td class="amount">${Math.round(toNumber(detail.price))}</td>
+      <td class="amount">${Math.round(totals.amount)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function buildExcelSummaryRows(totals, info, isInternal) {
+  const rows = [
+    ["請款小計", Math.round(totals.subtotal)]
+  ];
+  if (info.hasDiscount) {
+    rows.push(["折扣費用", Math.round(totals.discountTotal)]);
+    rows.push(["折扣後小計", Math.round(totals.netSubtotal)]);
+  }
+  if (info.isTaxIncluded) rows.push([`營業稅 ${formatRate(info.taxRate)}`, Math.round(totals.taxTotal)]);
+  if (info.hasRetention) rows.push([`保留款 ${formatRate(info.retentionRate)}`, Math.round(totals.retentionTotal)]);
+  rows.push(["本期應收", Math.round(totals.grandTotal)]);
+  if (isInternal) {
+    rows.push(["成本合計", Math.round(totals.costTotal)]);
+    rows.push(["預估利潤", Math.round(totals.profitTotal)]);
+    rows.push(["平均毛利率", formatPercent(totals.marginTotal)]);
+  }
+  return rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td class="amount">${escapeHtml(value)}</td></tr>`).join("");
 }
 
 function buildPdfDocument(type, invoice) {
@@ -2861,6 +3217,16 @@ function formatFullDateTime(value) {
   });
 }
 
+function formatDateOnly(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+}
+
 function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "未儲存";
@@ -2948,6 +3314,21 @@ document.querySelector("#addDetailButton").addEventListener("click", addDetail);
 invoiceSearchInput.addEventListener("input", () => {
   state.invoiceSearchQuery = invoiceSearchInput.value;
   renderInvoiceList();
+});
+
+statsPeriodType.addEventListener("change", () => {
+  state.statsPeriodType = statsPeriodType.value;
+  renderStatsDashboard();
+});
+
+statsReferenceDate.addEventListener("change", () => {
+  state.statsReferenceDate = statsReferenceDate.value || new Date().toISOString().slice(0, 10);
+  renderStatsDashboard();
+});
+
+statsStatusFilter.addEventListener("change", () => {
+  state.statsStatusFilter = statsStatusFilter.value;
+  renderStatsDashboard();
 });
 
 invoiceList.addEventListener("click", (event) => {
@@ -3047,8 +3428,13 @@ detailsContainer.addEventListener("click", (event) => {
   if (!canEditInvoice()) return;
   const selectDetail = event.target.closest("[data-select-detail]");
   const addChildButton = event.target.closest("[data-add-child-detail]");
+  const copySectionButton = event.target.closest("[data-copy-section]");
   if (addChildButton) {
     addChildDetail(Number(addChildButton.dataset.addChildDetail));
+    return;
+  }
+  if (copySectionButton) {
+    copySection(Number(copySectionButton.dataset.copySection));
     return;
   }
   if (selectDetail) {
@@ -3143,7 +3529,11 @@ exportButton.addEventListener("click", () => {
 exportMenu.addEventListener("click", (event) => {
   const button = event.target.closest("[data-export]");
   if (!button) return;
-  exportPdf(button.dataset.export);
+  if (button.dataset.export.endsWith("-excel")) {
+    exportExcel(button.dataset.export.replace("-excel", ""));
+  } else {
+    exportPdf(button.dataset.export);
+  }
   closeExportMenu();
 });
 

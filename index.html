@@ -77,6 +77,45 @@
           </div>
         </header>
 
+        <section class="stats-panel" aria-label="收支統計">
+          <div class="stats-heading">
+            <div>
+              <h2>收支統計</h2>
+              <p id="statsRangeLabel">依目前篩選統計自己建立的請款單</p>
+            </div>
+            <div class="stats-controls">
+              <label>
+                期間
+                <select id="statsPeriodType">
+                  <option value="year">本年</option>
+                  <option value="month">本月</option>
+                  <option value="week">本週</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+              <label>
+                基準日
+                <input id="statsReferenceDate" type="date">
+              </label>
+              <label>
+                狀態
+                <select id="statsStatusFilter">
+                  <option value="closed">已結案</option>
+                  <option value="ongoing">進行中</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="stats-content">
+            <div class="pie-card">
+              <div class="stats-pie" id="statsPie" aria-label="收支比例圖"></div>
+              <div id="statsLegend" class="stats-legend"></div>
+            </div>
+            <div id="statsCards" class="stats-cards"></div>
+          </div>
+        </section>
+
         <section class="list-panel" aria-label="請款單列表">
           <div class="list-heading">
             <div>
@@ -116,6 +155,12 @@
                 </button>
                 <button type="button" data-export="client" role="menuitem">
                   匯出請款表單 PDF
+                </button>
+                <button type="button" data-export="internal-excel" role="menuitem">
+                  匯出自留存表單 Excel
+                </button>
+                <button type="button" data-export="client-excel" role="menuitem">
+                  匯出請款表單 Excel
                 </button>
               </div>
             </div>
