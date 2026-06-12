@@ -4,6 +4,19 @@ const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
 const ADMIN_EMAIL = "irrvyh4815@gmail.com";
 const PBKDF2_ITERATIONS = 150000;
+const APP_VERSION = "ez2earn_260612001";
+const VERSION_HISTORY = [
+  {
+    version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "新增請款單留言板與留言通知。",
+      "通知改為喇叭圖示展開面板，未讀通知顯示紅點。",
+      "已結案請款單可恢復為進行中。",
+      "新增版本號、製作團隊與帳號管理內的版本詳情。"
+    ]
+  }
+];
 
 const defaultInfo = {
   projectName: "A 棟機電追加工程",
@@ -101,6 +114,9 @@ const saveStatus = document.querySelector("#saveStatus");
 const saveInvoiceButton = document.querySelector("#saveInvoiceButton");
 const accountPanel = document.querySelector("#accountPanel");
 const accountMessage = document.querySelector("#accountMessage");
+const versionPanel = document.querySelector("#versionPanel");
+const versionList = document.querySelector("#versionList");
+const appVersionLabels = document.querySelectorAll("[data-app-version]");
 const adminPanel = document.querySelector("#adminPanel");
 const adminAccountList = document.querySelector("#adminAccountList");
 const accountCount = document.querySelector("#accountCount");
@@ -108,7 +124,18 @@ const inviteMessage = document.querySelector("#inviteMessage");
 const sessionSidebar = document.querySelector("#sessionSidebar");
 const sidebarUserLine = document.querySelector("#sidebarUserLine");
 const sidebarLastSavedLine = document.querySelector("#sidebarLastSavedLine");
+const noticeWidget = document.querySelector("#noticeWidget");
+const noticeToggle = document.querySelector("#noticeToggle");
+const noticePanel = document.querySelector("#noticePanel");
+const noticeDot = document.querySelector("#noticeDot");
 const lastSavedLine = document.querySelector("#lastSavedLine");
+const messageBoardButton = document.querySelector("#messageBoardButton");
+const messageBoardPanel = document.querySelector("#messageBoardPanel");
+const messageBoardList = document.querySelector("#messageBoardList");
+const messageBoardForm = document.querySelector("#messageBoardForm");
+const messageInput = document.querySelector("#messageInput");
+const messageBoardStatus = document.querySelector("#messageBoardStatus");
+const closeMessageBoardButton = document.querySelector("#closeMessageBoardButton");
 const leaveConfirmPanel = document.querySelector("#leaveConfirmPanel");
 const saveAndLeaveButton = document.querySelector("#saveAndLeaveButton");
 const leaveWithoutSaveButton = document.querySelector("#leaveWithoutSaveButton");
@@ -137,9 +164,12 @@ const cancelDeleteButton = document.querySelector("#cancelDeleteButton");
 const cancelDeleteActionButton = document.querySelector("#cancelDeleteActionButton");
 const closeConfirmPanel = document.querySelector("#closeConfirmPanel");
 const closeConfirmText = document.querySelector("#closeConfirmText");
+const closeConfirmTitle = document.querySelector("#closeConfirmTitle");
 const confirmCloseButton = document.querySelector("#confirmCloseButton");
 const cancelCloseButton = document.querySelector("#cancelCloseButton");
 const cancelCloseActionButton = document.querySelector("#cancelCloseActionButton");
+const versionDetailButton = document.querySelector("#versionDetailButton");
+const closeVersionButton = document.querySelector("#closeVersionButton");
 
 function createInvoice(overrides = {}) {
   const now = new Date();
@@ -150,6 +180,7 @@ function createInvoice(overrides = {}) {
     isClosed: false,
     closedAt: "",
     collaborators: [],
+    messages: [],
     info: { ...defaultInfo, invoiceNo: `INV-${formatDateCode(now)}` },
     details: [
       { id: createId("detail"), name: "弱電管線配管", unit: "式", qty: 1, price: 86000, cost: 62000 },
@@ -180,6 +211,7 @@ async function initApp() {
   state.accounts = loadAccounts();
   state.invitations = loadInvitations();
   ensureAdminAccount();
+  renderVersionLabels();
   showAuth();
 }
 
@@ -213,7 +245,7 @@ function saveAccounts() {
 function loadInvitations() {
   try {
     const invitations = JSON.parse(localStorage.getItem(INVITATION_STORAGE_KEY) || "[]");
-    return Array.isArray(invitations) ? invitations : [];
+    return Array.isArray(invitations) ? invitations.map(normalizeNotification) : [];
   } catch {
     return [];
   }
@@ -221,6 +253,22 @@ function loadInvitations() {
 
 function saveInvitations() {
   localStorage.setItem(INVITATION_STORAGE_KEY, JSON.stringify(state.invitations));
+}
+
+function normalizeNotification(notification) {
+  return {
+    id: notification.id || createId("notice"),
+    type: notification.type || "invite",
+    fromMemberCode: notification.fromMemberCode || "",
+    fromNickname: notification.fromNickname || "系統",
+    toMemberCode: notification.toMemberCode || "",
+    invoiceId: notification.invoiceId || "",
+    invoiceNo: notification.invoiceNo || "",
+    projectName: notification.projectName || "",
+    messageText: notification.messageText || "",
+    read: Boolean(notification.read),
+    createdAt: notification.createdAt || new Date().toISOString()
+  };
 }
 
 function ensureAdminAccount() {
@@ -504,8 +552,19 @@ function normalizeInvoice(invoice) {
     isClosed: Boolean(invoice.isClosed),
     closedAt: invoice.closedAt || "",
     collaborators: Array.isArray(invoice.collaborators) ? invoice.collaborators : [],
+    messages: Array.isArray(invoice.messages) ? invoice.messages.map(normalizeMessage) : [],
     info: { ...defaultInfo, ...(invoice.info || {}) },
     details: normalizeDetails(invoice)
+  };
+}
+
+function normalizeMessage(message) {
+  return {
+    id: message.id || createId("message"),
+    authorMemberCode: message.authorMemberCode || "",
+    authorNickname: message.authorNickname || "未知成員",
+    text: String(message.text || "").trim(),
+    createdAt: message.createdAt || new Date().toISOString()
   };
 }
 
@@ -579,6 +638,7 @@ function showList() {
     closeLeaveConfirm();
     closeDeleteConfirm();
     closeCloseConfirm();
+    closeMessageBoard();
     authView.classList.add("is-hidden");
     listView.classList.remove("is-hidden");
     formView.classList.add("is-hidden");
@@ -609,6 +669,7 @@ function showForm(invoiceId) {
     saveStatus.textContent = "";
     inviteMessage.textContent = "";
     closeCloseConfirm();
+    closeMessageBoard();
     renderCurrentUser();
     renderForm();
     renderLastSaved();
@@ -700,14 +761,6 @@ async function confirmDeleteAction() {
   }
 }
 
-function requestCloseInvoice() {
-  if (!state.activeInvoice || state.activeInvoice.isClosed) return;
-  const title = state.activeInvoice.info.projectName || state.activeInvoice.info.invoiceNo || "此請款單";
-  state.pendingCloseAction = closeActiveInvoice;
-  closeConfirmText.textContent = `確定將「${title}」結案？結案後會移入主列表的已結案分組。`;
-  closeConfirmPanel.classList.remove("is-hidden");
-}
-
 function closeCloseConfirm() {
   state.pendingCloseAction = null;
   closeConfirmPanel.classList.add("is-hidden");
@@ -721,14 +774,57 @@ async function confirmCloseAction() {
   }
 }
 
+function requestInvoiceStatusChange() {
+  if (!state.activeInvoice) return;
+  const title = state.activeInvoice.info.projectName || state.activeInvoice.info.invoiceNo || "此請款單";
+  const isClosed = Boolean(state.activeInvoice.isClosed);
+  state.pendingCloseAction = isClosed ? restoreActiveInvoice : closeActiveInvoice;
+  closeConfirmTitle.textContent = isClosed ? "確認恢復" : "確認結案";
+  closeConfirmText.textContent = isClosed
+    ? `確定將「${title}」恢復為進行中？恢復後會移入主列表的進行中分組。`
+    : `確定將「${title}」結案？結案後會移入主列表的已結案分組。`;
+  confirmCloseButton.textContent = isClosed ? "確認恢復" : "確認結案";
+  closeConfirmPanel.classList.remove("is-hidden");
+}
+
 async function closeActiveInvoice() {
-  if (!state.activeInvoice || state.activeInvoice.isClosed) return;
+  if (!state.activeInvoice) return;
   const now = new Date().toISOString();
   state.activeInvoice.isClosed = true;
   state.activeInvoice.closedAt = now;
   state.activeInvoice.updatedAt = now;
   await saveActiveInvoice({ silent: true });
   showList();
+}
+
+async function restoreActiveInvoice() {
+  if (!state.activeInvoice) return;
+  state.activeInvoice.isClosed = false;
+  state.activeInvoice.closedAt = "";
+  state.activeInvoice.updatedAt = new Date().toISOString();
+  await saveActiveInvoice({ silent: true });
+  showList();
+}
+
+function renderVersionLabels() {
+  appVersionLabels.forEach((label) => {
+    label.textContent = APP_VERSION;
+  });
+}
+
+function openVersionPanel() {
+  versionList.innerHTML = VERSION_HISTORY.map((entry) => `
+    <article class="version-item">
+      <strong>${escapeHtml(entry.version)}</strong>
+      <span>${escapeHtml(entry.date)}</span>
+      <ul>${entry.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </article>
+  `).join("");
+  versionPanel.classList.remove("is-hidden");
+}
+
+function closeVersionPanel() {
+  versionPanel.classList.add("is-hidden");
 }
 
 function renderCurrentUser() {
@@ -825,32 +921,147 @@ function renderInvoiceGroup(title, invoices) {
   invoiceList.appendChild(group);
 }
 
-function renderNotices() {
-  const notices = state.invitations
-    .filter((invite) => invite.toMemberCode === state.currentUser.memberCode)
+function getNoticeItems() {
+  return state.invitations
+    .filter((notice) => notice.toMemberCode === state.currentUser.memberCode)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
 
-  noticeCount.textContent = `${notices.length} 則`;
+function renderNotices() {
+  const notices = getNoticeItems();
+  const unreadCount = notices.filter((notice) => !notice.read).length;
+
+  noticeCount.textContent = String(unreadCount);
+  noticeDot.classList.toggle("is-hidden", unreadCount === 0);
   noticeList.innerHTML = "";
 
   if (notices.length === 0) {
-    noticeList.innerHTML = `<p class="empty-state">目前沒有新的邀請通知。</p>`;
+    noticeList.innerHTML = `<p class="empty-state">目前沒有通知。</p>`;
     return;
   }
 
   notices.forEach((notice) => {
     const item = document.createElement("article");
     item.className = `notice-item${notice.read ? " is-read" : ""}`;
+    const isMessage = notice.type === "message";
     item.innerHTML = `
       <div>
         <strong>${escapeHtml(notice.projectName || "未命名工程")}</strong>
-        <p>${escapeHtml(notice.fromNickname)} 邀請你查看請款單 ${escapeHtml(notice.invoiceNo || "")}</p>
+        <p>${isMessage
+          ? `${escapeHtml(notice.fromNickname)} 在請款單留言：${escapeHtml(notice.messageText || "")}`
+          : `${escapeHtml(notice.fromNickname)} 邀請你查看請款單 ${escapeHtml(notice.invoiceNo || "")}`}
+        </p>
         <span>${formatDateTime(notice.createdAt)}</span>
       </div>
-      <button class="secondary-button" type="button" data-read-notice="${notice.id}">${notice.read ? "已讀" : "標示已讀"}</button>
+      <button class="secondary-button" type="button" data-open-notice="${notice.id}">${isMessage ? "查看" : (notice.read ? "已讀" : "標示已讀")}</button>
     `;
     noticeList.appendChild(item);
   });
+}
+
+function toggleNoticePanel() {
+  const isOpen = noticePanel.classList.toggle("is-collapsed") === false;
+  noticeToggle.setAttribute("aria-expanded", String(isOpen));
+}
+
+function getInvoiceEditors(invoice = state.activeInvoice) {
+  return [invoice?.ownerMemberCode, ...(invoice?.collaborators || [])].filter(Boolean);
+}
+
+function canEditInvoice(invoice = state.activeInvoice) {
+  if (!invoice || !state.currentUser) return false;
+  const editors = getInvoiceEditors(invoice);
+  return editors.length === 0 || editors.includes(state.currentUser.memberCode);
+}
+
+function toggleMessageBoard() {
+  const isOpen = messageBoardPanel.classList.toggle("is-hidden") === false;
+  messageBoardButton.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) renderMessageBoard();
+}
+
+function closeMessageBoard() {
+  messageBoardPanel.classList.add("is-hidden");
+  messageBoardButton.setAttribute("aria-expanded", "false");
+  messageBoardStatus.textContent = "";
+}
+
+function renderMessageBoard() {
+  if (!state.activeInvoice) return;
+  const allowed = canEditInvoice();
+  messageBoardForm.classList.toggle("is-hidden", !allowed);
+  messageBoardStatus.textContent = allowed ? "" : "你沒有此請款單的留言權限。";
+  messageBoardList.innerHTML = "";
+
+  const messages = state.activeInvoice.messages || [];
+  if (messages.length === 0) {
+    messageBoardList.innerHTML = `<p class="empty-state">目前沒有留言。</p>`;
+    return;
+  }
+
+  messages
+    .slice()
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .forEach((message) => {
+      const item = document.createElement("article");
+      item.className = `message-item${message.authorMemberCode === state.currentUser.memberCode ? " is-own" : ""}`;
+      item.innerHTML = `
+        <div>
+          <strong>${escapeHtml(message.authorNickname)}</strong>
+          <span>${formatDateTime(message.createdAt)}</span>
+        </div>
+        <p>${escapeHtml(message.text)}</p>
+      `;
+      messageBoardList.appendChild(item);
+    });
+}
+
+async function submitMessage(event) {
+  event.preventDefault();
+  if (!canEditInvoice()) {
+    messageBoardStatus.textContent = "你沒有此請款單的留言權限。";
+    return;
+  }
+  const text = messageInput.value.trim();
+  if (!text) {
+    messageBoardStatus.textContent = "請輸入留言內容。";
+    return;
+  }
+  const message = normalizeMessage({
+    id: createId("message"),
+    authorMemberCode: state.currentUser.memberCode,
+    authorNickname: state.currentUser.nickname,
+    text,
+    createdAt: new Date().toISOString()
+  });
+  state.activeInvoice.messages.push(message);
+  state.activeInvoice.updatedAt = message.createdAt;
+  messageInput.value = "";
+  await saveActiveInvoice({ silent: true });
+  createMessageNotifications(message);
+  renderMessageBoard();
+  renderNotices();
+}
+
+function createMessageNotifications(message) {
+  const recipients = getInvoiceEditors()
+    .filter((memberCode) => memberCode && memberCode !== state.currentUser.memberCode);
+  recipients.forEach((memberCode) => {
+    state.invitations.unshift(normalizeNotification({
+      id: createId("notice"),
+      type: "message",
+      fromMemberCode: state.currentUser.memberCode,
+      fromNickname: state.currentUser.nickname,
+      toMemberCode: memberCode,
+      invoiceId: state.activeInvoice.id,
+      invoiceNo: state.activeInvoice.info.invoiceNo,
+      projectName: state.activeInvoice.info.projectName,
+      messageText: message.text,
+      read: false,
+      createdAt: message.createdAt
+    }));
+  });
+  saveInvitations();
 }
 
 function renderForm() {
@@ -875,8 +1086,8 @@ function updateCloseInvoiceButton() {
     closeInvoiceButton.disabled = false;
     return;
   }
-  closeInvoiceButton.textContent = "已結案";
-  closeInvoiceButton.disabled = true;
+  closeInvoiceButton.textContent = "恢復";
+  closeInvoiceButton.disabled = false;
 }
 
 function renderDetails() {
@@ -1932,12 +2143,18 @@ document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#closeAccountButton").addEventListener("click", closeAccountPanel);
 document.querySelector("#accountForm").addEventListener("submit", updateCurrentAccount);
 document.querySelector("#inviteForm").addEventListener("submit", inviteMember);
+versionDetailButton.addEventListener("click", openVersionPanel);
+closeVersionButton.addEventListener("click", closeVersionPanel);
 saveAndLeaveButton.addEventListener("click", saveAndReturnToList);
 leaveWithoutSaveButton.addEventListener("click", returnToListWithoutSaving);
 stayOnFormButton.addEventListener("click", closeLeaveConfirm);
 cancelLeaveButton.addEventListener("click", closeLeaveConfirm);
 deleteInvoiceButton.addEventListener("click", () => deleteInvoice(state.activeInvoiceId, { fromForm: true }));
-closeInvoiceButton.addEventListener("click", requestCloseInvoice);
+closeInvoiceButton.addEventListener("click", requestInvoiceStatusChange);
+messageBoardButton.addEventListener("click", toggleMessageBoard);
+closeMessageBoardButton.addEventListener("click", closeMessageBoard);
+messageBoardForm.addEventListener("submit", submitMessage);
+noticeToggle.addEventListener("click", toggleNoticePanel);
 copySelectedDetailsButton.addEventListener("click", copySelectedDetails);
 deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
 selectAllDetails.addEventListener("change", () => {
@@ -1979,13 +2196,18 @@ invoiceList.addEventListener("click", (event) => {
 });
 
 noticeList.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-read-notice]");
+  const button = event.target.closest("[data-open-notice]");
   if (!button) return;
-  const invite = state.invitations.find((item) => item.id === button.dataset.readNotice);
-  if (invite) {
-    invite.read = true;
+  const notice = state.invitations.find((item) => item.id === button.dataset.openNotice);
+  if (notice) {
+    notice.read = true;
     saveInvitations();
     renderNotices();
+    if (notice.type === "message" && notice.invoiceId && state.invoices.some((invoice) => invoice.id === notice.invoiceId)) {
+      showForm(notice.invoiceId);
+      noticePanel.classList.add("is-collapsed");
+      noticeToggle.setAttribute("aria-expanded", "false");
+    }
   }
 });
 
@@ -2128,9 +2350,11 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeExportMenu();
     closeAccountPanel();
+    closeVersionPanel();
     closeLeaveConfirm();
     closeDeleteConfirm();
     closeCloseConfirm();
+    closeMessageBoard();
   }
 });
 

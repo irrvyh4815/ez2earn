@@ -429,6 +429,83 @@ h2 {
   margin-top: 14px;
 }
 
+.notice-widget {
+  display: grid;
+  gap: 10px;
+}
+
+.notice-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  box-shadow: var(--shadow);
+  font-weight: 900;
+  text-align: left;
+}
+
+.notice-speaker {
+  position: relative;
+  width: 24px;
+  height: 20px;
+}
+
+.notice-speaker::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent-strong);
+  box-shadow: 7px -4px 0 -1px var(--accent-strong), 7px 4px 0 -1px var(--accent-strong);
+}
+
+.notice-speaker::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  top: 3px;
+  width: 10px;
+  height: 14px;
+  border-right: 2px solid var(--accent-strong);
+  border-radius: 50%;
+}
+
+.notice-dot {
+  position: absolute;
+  top: 8px;
+  left: 30px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--danger);
+}
+
+.notice-toggle strong {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+
+.notice-panel.is-collapsed {
+  display: none;
+}
+
 .list-panel,
 .fold-panel,
 .items-panel,
@@ -453,6 +530,17 @@ h2 {
 .session-sidebar .notice-list {
   max-height: 360px;
   overflow: auto;
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .list-heading,
@@ -860,6 +948,99 @@ input[type="checkbox"],
   line-height: 1.55;
 }
 
+.message-board-button {
+  position: fixed;
+  right: 348px;
+  bottom: 24px;
+  z-index: 9;
+  min-height: 44px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 0 18px;
+  box-shadow: var(--shadow);
+  font-weight: 900;
+}
+
+.message-board-panel {
+  position: fixed;
+  right: 348px;
+  bottom: 78px;
+  z-index: 12;
+  display: grid;
+  grid-template-rows: auto minmax(160px, 1fr) auto auto;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 120px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.message-board-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfe;
+}
+
+.message-board-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px;
+  overflow: auto;
+}
+
+.message-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.message-item.is-own {
+  border-color: #c8d7ef;
+  background: var(--accent-soft);
+}
+
+.message-item div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.message-item strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.message-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.message-item p {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.message-board-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .items-panel {
   overflow-x: auto;
 }
@@ -1077,6 +1258,43 @@ input[type="checkbox"],
   overflow-wrap: anywhere;
 }
 
+.account-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.version-list {
+  display: grid;
+  gap: 12px;
+}
+
+.version-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.version-item strong {
+  color: var(--accent-strong);
+}
+
+.version-item span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.version-item ul {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .admin-panel {
   margin-top: 18px;
   border: 1px solid var(--line);
@@ -1252,6 +1470,16 @@ input[type="checkbox"],
   .summary-panel,
   .invoice-card {
     grid-template-columns: 1fr;
+  }
+
+  .message-board-button {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .message-board-panel {
+    right: 16px;
+    bottom: 70px;
   }
 
   .notice-item,
