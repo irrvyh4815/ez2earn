@@ -374,7 +374,7 @@
           </section>
         </details>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel">
           <summary>
             <span>請款進度追蹤</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -382,20 +382,8 @@
           <section class="progress-panel" aria-label="請款進度追蹤">
             <div class="progress-inputs">
               <label>
-                合約總金額
-                <input id="contractAmount" type="number" min="0" step="1">
-              </label>
-              <label>
-                前期已請款金額
-                <input id="previousBilledAmount" type="number" min="0" step="1">
-              </label>
-              <label>
-                前期已保留款
-                <input id="previousRetentionAmount" type="number" min="0" step="1">
-              </label>
-              <label>
-                保留款可領日期
-                <input id="retentionReleaseDate" type="date">
+                業主保留金額
+                <input id="ownerRetentionAmount" type="number" min="0" step="1">
               </label>
               <label>
                 提醒日期
@@ -403,35 +391,48 @@
               </label>
               <label class="progress-note-field">
                 進度備註
-                <textarea id="progressNote" rows="3" placeholder="記錄請款進度、業主保留款領回條件或提醒事項"></textarea>
+                <textarea id="progressNote" rows="3" placeholder="記錄付款狀態、保留款領回條件或提醒事項"></textarea>
               </label>
             </div>
+            <div class="progress-record-heading">
+              <h3>收款紀錄</h3>
+              <button class="secondary-button" id="addPaymentRecordButton" type="button"><span class="button-icon" aria-hidden="true">＋</span>新增紀錄</button>
+            </div>
+            <div id="paymentRecordsList" class="payment-records-list"></div>
             <div class="progress-visual">
               <div class="progress-meter" aria-label="請款比例">
                 <span id="billingProgressBar"></span>
               </div>
-              <p id="progressHint">尚未設定合約總金額。</p>
+              <p id="progressHint">新增收款紀錄後，系統會自動累計這張請款單的收款進度。</p>
             </div>
             <div class="progress-cards">
               <div>
-                <span>本期請款</span>
-                <strong id="progressCurrentBilling">$0</strong>
+                <span>請款單總額</span>
+                <strong id="progressInvoiceTotal">$0</strong>
               </div>
               <div>
-                <span>累計請款</span>
-                <strong id="progressTotalBilled">$0</strong>
+                <span>已收款</span>
+                <strong id="progressReceivedTotal">$0</strong>
               </div>
               <div>
-                <span>請款比例</span>
-                <strong id="progressBillingPercent">0%</strong>
+                <span>收款進度</span>
+                <strong id="progressCollectionPercent">0%</strong>
               </div>
               <div>
-                <span>業主保留款餘額</span>
+                <span>實際入帳率</span>
+                <strong id="progressActualIncomeRate">0%</strong>
+              </div>
+              <div>
+                <span>業主保留金額</span>
                 <strong id="progressRetentionHeld">$0</strong>
               </div>
               <div>
-                <span>可領狀態</span>
-                <strong id="progressReleaseStatus">尚未設定</strong>
+                <span>待收尾款</span>
+                <strong id="progressOutstandingBalance">$0</strong>
+              </div>
+              <div>
+                <span>收款筆數</span>
+                <strong id="progressRecordCount">0 筆</strong>
               </div>
               <div>
                 <span>提醒狀態</span>

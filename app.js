@@ -12,10 +12,21 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612009";
+const APP_VERSION = "ez2earn_260612010";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "請款進度追蹤預設收合。",
+      "請款進度追蹤改為以本張請款單總額為母數。",
+      "新增收款紀錄功能，可累加多次收款並同步進度條。",
+      "可自行輸入業主保留金額與提醒日期，接近提醒日時會進入通知。",
+      "收支圓餅圖改回 2D 呈現。"
+    ]
+  },
+  {
+    version: "ez2earn_260612009",
     date: "2026/06/12",
     items: [
       "他人共同編輯列表更名為與他人共同編輯的表單。",
@@ -128,12 +139,10 @@ const defaultInfo = {
   hasDiscount: false,
   discountAmount: 0,
   paymentTerms: "月結 30 天",
-  contractAmount: 0,
-  previousBilledAmount: 0,
-  previousRetentionAmount: 0,
-  retentionReleaseDate: "",
+  ownerRetentionAmount: 0,
   retentionReminderDate: "",
   progressNote: "",
+  paymentRecords: [],
   remarks: ""
 };
 
@@ -158,10 +167,7 @@ const infoFields = [
   "hasDiscount",
   "discountAmount",
   "paymentTerms",
-  "contractAmount",
-  "previousBilledAmount",
-  "previousRetentionAmount",
-  "retentionReleaseDate",
+  "ownerRetentionAmount",
   "retentionReminderDate",
   "progressNote",
   "remarks"
@@ -286,6 +292,8 @@ const discountAmountInput = document.querySelector("#discountAmount");
 const toggleFormulaButton = document.querySelector("#toggleFormulaButton");
 const formulaPanel = document.querySelector("#formulaPanel");
 const formulaList = document.querySelector("#formulaList");
+const addPaymentRecordButton = document.querySelector("#addPaymentRecordButton");
+const paymentRecordsList = document.querySelector("#paymentRecordsList");
 const deleteConfirmPanel = document.querySelector("#deleteConfirmPanel");
 const deleteConfirmText = document.querySelector("#deleteConfirmText");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
@@ -415,6 +423,7 @@ function normalizeNotification(notification) {
     invoiceNo: notification.invoiceNo || "",
     projectName: notification.projectName || "",
     messageText: notification.messageText || "",
+    reminderDate: notification.reminderDate || "",
     read: Boolean(notification.read),
     createdAt: notification.createdAt || new Date().toISOString()
   };
@@ -835,9 +844,19 @@ function normalizeInvoice(invoice) {
     editLogs: Array.isArray(invoice.editLogs) && invoice.editLogs.length > 0
       ? invoice.editLogs.map(normalizeEditLog)
       : [createEditLog("建立表單", "舊資料補齊編輯記錄")],
-    info: { ...defaultInfo, ...(invoice.info || {}) },
+    info: { ...defaultInfo, ...(invoice.info || {}), paymentRecords: normalizePaymentRecords(invoice.info?.paymentRecords) },
     details: normalizeDetails(invoice)
   };
+}
+
+function normalizePaymentRecords(records) {
+  if (!Array.isArray(records)) return [];
+  return records.map((record) => ({
+    id: record.id || createId("payment"),
+    date: record.date || getTodayDateValue(),
+    amount: toNumber(record.amount),
+    note: String(record.note || "").trim()
+  }));
 }
 
 function uniqueMemberCodes(value) {
@@ -1642,9 +1661,51 @@ function getStatsStatusLabel() {
 }
 
 function getNoticeItems() {
+  ensureProgressReminderNotices();
   return state.invitations
     .filter((notice) => notice.toMemberCode === state.currentUser.memberCode)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function ensureProgressReminderNotices() {
+  if (!state.currentUser) return;
+  let didUpdate = false;
+  const today = parseDateInput(getTodayDateValue());
+  today.setHours(0, 0, 0, 0);
+
+  getVisibleInvoices().forEach((invoice) => {
+    const info = invoice.info || {};
+    const retentionAmount = toNumber(info.ownerRetentionAmount);
+    if (retentionAmount <= 0 || !info.retentionReminderDate) return;
+    const reminderDate = parseDateInput(info.retentionReminderDate);
+    reminderDate.setHours(0, 0, 0, 0);
+    const days = Math.round((reminderDate - today) / 86400000);
+    if (days > 3 || days < -30) return;
+    const exists = state.invitations.some((notice) => (
+      notice.type === "retention-reminder" &&
+      notice.toMemberCode === state.currentUser.memberCode &&
+      notice.invoiceId === invoice.id &&
+      notice.reminderDate === info.retentionReminderDate
+    ));
+    if (exists) return;
+    state.invitations.unshift(normalizeNotification({
+      id: createId("notice"),
+      type: "retention-reminder",
+      fromMemberCode: "system",
+      fromNickname: "系統提醒",
+      toMemberCode: state.currentUser.memberCode,
+      invoiceId: invoice.id,
+      invoiceNo: invoice.info.invoiceNo,
+      projectName: invoice.info.projectName,
+      messageText: `業主保留金額 ${formatCurrency(retentionAmount)}，提醒日期 ${formatFullDate(reminderDate)}`,
+      reminderDate: info.retentionReminderDate,
+      read: false,
+      createdAt: new Date().toISOString()
+    }));
+    didUpdate = true;
+  });
+
+  if (didUpdate) saveInvitations();
 }
 
 function renderNotices() {
@@ -1663,20 +1724,26 @@ function renderNotices() {
   notices.forEach((notice) => {
     const item = document.createElement("article");
     item.className = `notice-item${notice.read ? " is-read" : ""}`;
-    const isMessage = notice.type === "message";
     item.innerHTML = `
       <div>
         <strong>${escapeHtml(notice.projectName || "未命名工程")}</strong>
-        <p>${isMessage
-          ? `${escapeHtml(notice.fromNickname)} 在請款單留言：${escapeHtml(notice.messageText || "")}`
-          : `${escapeHtml(notice.fromNickname)} 邀請你以${escapeHtml(getRoleLabel(notice.role || "editor"))}身份加入 ${escapeHtml(notice.invoiceNo || "")}`}
-        </p>
+        <p>${getNoticeText(notice)}</p>
         <span>${formatDateTime(notice.createdAt)}</span>
       </div>
       <button class="secondary-button" type="button" data-open-notice="${notice.id}"><span class="button-icon" aria-hidden="true">↗</span>前往</button>
     `;
     noticeList.appendChild(item);
   });
+}
+
+function getNoticeText(notice) {
+  if (notice.type === "message") {
+    return `${escapeHtml(notice.fromNickname)} 在請款單留言：${escapeHtml(notice.messageText || "")}`;
+  }
+  if (notice.type === "retention-reminder") {
+    return `保留金提醒：${escapeHtml(notice.messageText || "請確認業主保留金額與領回時程。")}`;
+  }
+  return `${escapeHtml(notice.fromNickname)} 邀請你以${escapeHtml(getRoleLabel(notice.role || "editor"))}身份加入 ${escapeHtml(notice.invoiceNo || "")}`;
 }
 
 function toggleNoticePanel() {
@@ -1688,6 +1755,7 @@ function toggleNoticePanel() {
 }
 
 function markNoticesRead() {
+  ensureProgressReminderNotices();
   let didUpdate = false;
   state.invitations.forEach((notice) => {
     if (notice.toMemberCode === state.currentUser.memberCode && !notice.read) {
@@ -1873,6 +1941,7 @@ function renderForm() {
   updateCloseInvoiceButton();
   renderCollaborationPanel();
   renderDetails();
+  renderPaymentRecords();
   renderSummary();
   applyFormPermissions();
   updateMessageBoardDot();
@@ -2097,7 +2166,7 @@ function getProjectInfo() {
 }
 
 function syncInfoFromInputs() {
-  state.activeInvoice.info = getProjectInfo();
+  state.activeInvoice.info = { ...state.activeInvoice.info, ...getProjectInfo() };
   updateConditionalFields();
 }
 
@@ -2183,38 +2252,100 @@ function renderSummary() {
 
 function renderProgressPanel(totals = summaryTotals()) {
   const info = state.activeInvoice.info;
-  const contractAmount = toNumber(info.contractAmount);
-  const previousBilledAmount = toNumber(info.previousBilledAmount);
-  const previousRetentionAmount = toNumber(info.previousRetentionAmount);
-  const currentBillingAmount = totals.netSubtotal + totals.taxTotal;
-  const totalBilledAmount = previousBilledAmount + currentBillingAmount;
-  const totalRetentionHeld = previousRetentionAmount + totals.retentionTotal;
-  const progressRate = contractAmount > 0 ? totalBilledAmount / contractAmount : 0;
+  const invoiceAmount = getInvoiceProgressBase(totals);
+  const records = normalizePaymentRecords(info.paymentRecords);
+  const receivedTotal = records.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  const ownerRetentionAmount = toNumber(info.ownerRetentionAmount);
+  const outstandingBalance = Math.max(invoiceAmount - receivedTotal - ownerRetentionAmount, 0);
+  const progressRate = invoiceAmount > 0 ? receivedTotal / invoiceAmount : 0;
   const progressPercent = Math.min(Math.max(progressRate, 0), 1) * 100;
 
-  document.querySelector("#progressCurrentBilling").textContent = formatCurrency(currentBillingAmount);
-  document.querySelector("#progressTotalBilled").textContent = formatCurrency(totalBilledAmount);
-  document.querySelector("#progressBillingPercent").textContent = contractAmount > 0 ? formatPercent(progressRate) : "0%";
-  document.querySelector("#progressRetentionHeld").textContent = formatCurrency(totalRetentionHeld);
+  document.querySelector("#progressInvoiceTotal").textContent = formatCurrency(invoiceAmount);
+  document.querySelector("#progressReceivedTotal").textContent = formatCurrency(receivedTotal);
+  document.querySelector("#progressCollectionPercent").textContent = invoiceAmount > 0 ? formatPercent(progressRate) : "0%";
+  document.querySelector("#progressActualIncomeRate").textContent = invoiceAmount > 0 ? formatPercent(progressRate) : "0%";
+  document.querySelector("#progressRetentionHeld").textContent = formatCurrency(ownerRetentionAmount);
+  document.querySelector("#progressOutstandingBalance").textContent = formatCurrency(outstandingBalance);
+  document.querySelector("#progressRecordCount").textContent = `${records.length} 筆`;
   document.querySelector("#billingProgressBar").style.width = `${progressPercent}%`;
-  document.querySelector("#progressHint").textContent = contractAmount > 0
-    ? `合約總額 ${formatCurrency(contractAmount)}，目前已請款 ${formatPercent(progressRate)}。`
-    : "設定合約總金額後，系統會自動計算請款比例。";
-  document.querySelector("#progressReleaseStatus").textContent = getProgressDateStatus(info.retentionReleaseDate, totalRetentionHeld, "release");
-  document.querySelector("#progressReminderStatus").textContent = getProgressDateStatus(info.retentionReminderDate, totalRetentionHeld, "reminder");
+  document.querySelector("#progressHint").textContent = invoiceAmount > 0
+    ? `本張請款單總額 ${formatCurrency(invoiceAmount)}，目前已入帳 ${formatCurrency(receivedTotal)}，待收尾款 ${formatCurrency(outstandingBalance)}。`
+    : "請先建立請款明細，系統會以本張請款單總額計算收款進度。";
+  document.querySelector("#progressReminderStatus").textContent = getProgressDateStatus(info.retentionReminderDate, ownerRetentionAmount);
 }
 
-function getProgressDateStatus(value, retentionAmount, type) {
-  if (retentionAmount <= 0 && type === "release") return "尚無保留款";
+function renderPaymentRecords() {
+  if (!state.activeInvoice) return;
+  const editable = canEditInvoice();
+  const records = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  state.activeInvoice.info.paymentRecords = records;
+  paymentRecordsList.innerHTML = "";
+  if (records.length === 0) {
+    paymentRecordsList.innerHTML = `<p class="empty-state">尚未新增收款紀錄。</p>`;
+    return;
+  }
+
+  records.forEach((record, index) => {
+    const row = document.createElement("article");
+    row.className = "payment-record-row";
+    row.innerHTML = `
+      <span>${index + 1}</span>
+      <label>
+        收款日期
+        <input data-payment-index="${index}" data-payment-field="date" type="date" value="${escapeHtml(record.date)}" ${editable ? "" : "disabled"}>
+      </label>
+      <label>
+        收款金額
+        <input data-payment-index="${index}" data-payment-field="amount" type="number" min="0" step="1" value="${record.amount}" ${editable ? "" : "disabled"}>
+      </label>
+      <label>
+        備註
+        <input data-payment-index="${index}" data-payment-field="note" type="text" value="${escapeHtml(record.note)}" ${editable ? "" : "disabled"}>
+      </label>
+      <button class="delete-row" data-delete-payment-record="${index}" type="button" aria-label="刪除收款紀錄" title="刪除" ${editable ? "" : "disabled"}>×</button>
+    `;
+    paymentRecordsList.appendChild(row);
+  });
+}
+
+function addPaymentRecord() {
+  if (!canEditInvoice()) return;
+  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  state.activeInvoice.info.paymentRecords.push({
+    id: createId("payment"),
+    date: getTodayDateValue(),
+    amount: 0,
+    note: ""
+  });
+  renderPaymentRecords();
+  renderSummary();
+  markActiveInvoiceDirty();
+}
+
+function deletePaymentRecord(index) {
+  if (!canEditInvoice()) return;
+  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  state.activeInvoice.info.paymentRecords.splice(index, 1);
+  renderPaymentRecords();
+  renderSummary();
+  markActiveInvoiceDirty();
+}
+
+function getInvoiceProgressBase(totals = summaryTotals()) {
+  return Math.max(totals.netSubtotal + totals.taxTotal, 0);
+}
+
+function getProgressDateStatus(value, retentionAmount) {
+  if (retentionAmount <= 0) return "尚無保留金額";
   if (!value) return "尚未設定";
   const target = parseDateInput(value);
   target.setHours(0, 0, 0, 0);
   const today = parseDateInput(getTodayDateValue());
   today.setHours(0, 0, 0, 0);
   const days = Math.round((target - today) / 86400000);
-  if (days < 0) return type === "release" ? `已到期 ${Math.abs(days)} 天` : `提醒已過 ${Math.abs(days)} 天`;
-  if (days === 0) return type === "release" ? "今日可申請" : "今日提醒";
-  return type === "release" ? `${formatFullDate(target)} 可領` : `${formatFullDate(target)} 提醒`;
+  if (days < 0) return `提醒已過 ${Math.abs(days)} 天`;
+  if (days === 0) return "今日提醒";
+  return `${formatFullDate(target)} 提醒`;
 }
 
 function renderFormulaPanel(totals = summaryTotals()) {
@@ -2389,6 +2520,7 @@ async function saveActiveInvoice(options = {}) {
   }
   state.isInvoiceDirty = false;
   renderLastSaved();
+  renderNotices();
 
   if (!options.silent) {
     setSaveStatus("已儲存");
@@ -2413,6 +2545,7 @@ function applyFormPermissions() {
   });
   updateConditionalFields();
   addSectionButton.disabled = !editable;
+  addPaymentRecordButton.disabled = !editable;
   copySelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
   deleteSelectedDetailsButton.disabled = !editable || state.selectedDetailIds.size === 0;
   selectAllDetails.disabled = !editable;
@@ -3433,6 +3566,7 @@ cancelCloseActionButton.addEventListener("click", closeCloseConfirm);
 toggleFormulaButton.addEventListener("click", toggleFormulaPanel);
 saveInvoiceButton.addEventListener("click", openEditLogPanel);
 addSectionButton.addEventListener("click", addSection);
+addPaymentRecordButton.addEventListener("click", addPaymentRecord);
 
 listTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -3544,6 +3678,38 @@ infoFields.forEach((field) => {
   };
   input.addEventListener("input", syncField);
   input.addEventListener("change", syncField);
+});
+
+paymentRecordsList.addEventListener("input", (event) => {
+  if (!canEditInvoice()) return;
+  const target = event.target.closest("[data-payment-field]");
+  if (!target) return;
+  const index = Number(target.dataset.paymentIndex);
+  const field = target.dataset.paymentField;
+  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  if (!state.activeInvoice.info.paymentRecords[index]) return;
+  state.activeInvoice.info.paymentRecords[index][field] = field === "amount" ? toNumber(target.value) : target.value;
+  renderSummary();
+  markActiveInvoiceDirty();
+});
+
+paymentRecordsList.addEventListener("change", (event) => {
+  if (!canEditInvoice()) return;
+  const target = event.target.closest("[data-payment-field]");
+  if (!target) return;
+  const index = Number(target.dataset.paymentIndex);
+  const field = target.dataset.paymentField;
+  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  if (!state.activeInvoice.info.paymentRecords[index]) return;
+  state.activeInvoice.info.paymentRecords[index][field] = field === "amount" ? toNumber(target.value) : target.value;
+  renderSummary();
+  markActiveInvoiceDirty();
+});
+
+paymentRecordsList.addEventListener("click", (event) => {
+  const deleteButton = event.target.closest("[data-delete-payment-record]");
+  if (!deleteButton) return;
+  deletePaymentRecord(Number(deleteButton.dataset.deletePaymentRecord));
 });
 
 detailsContainer.addEventListener("input", (event) => {
