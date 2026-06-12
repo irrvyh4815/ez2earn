@@ -51,6 +51,11 @@
                 確認密碼
                 <input id="registerPasswordConfirm" type="password" autocomplete="new-password" required>
               </label>
+              <label class="verification-field is-disabled-field">
+                信箱驗證碼
+                <input id="registerEmailCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="正式上架後啟用" disabled>
+              </label>
+              <p class="password-rule">信箱驗證碼功能已預留，正式上架前暫不啟用。</p>
               <p class="password-rule">密碼需包含英文大寫、小寫、數字與符號，且至少 8 碼。</p>
               <button class="primary-button" type="submit">建立帳號</button>
             </form>

@@ -2,12 +2,26 @@ const ACCOUNT_STORAGE_KEY = "ez2earn-accounts-v1";
 const INVITATION_STORAGE_KEY = "ez2earn-invitations-v1";
 const VAULT_PREFIX = "ez2earn-vault-";
 const LEGACY_INVOICE_KEYS = ["ez2earn-invoices-v3", "ez2earn-invoices-v2"];
-const ADMIN_EMAIL = "irrvyh4815@gmail.com";
+const ADMIN_EMAILS = ["irrvyh4815@gmail.com", "r3nault1999@gmail.com"];
+const ADMIN_MEMBER_CODES = {
+  "irrvyh4815@gmail.com": "EZ-ADMIN-001",
+  "r3nault1999@gmail.com": "EZ-ADMIN-002"
+};
+const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612002";
+const APP_VERSION = "ez2earn_260612003";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "新增註冊信箱驗證碼預留欄位與開關，目前正式上架前不啟用。",
+      "新增 r3nault1999@gmail.com 為最高權限管理員。",
+      "版本號更新並記錄本次帳號註冊與權限調整。"
+    ]
+  },
+  {
+    version: "ez2earn_260612002",
     date: "2026/06/12",
     items: [
       "留言板移至右側浮動欄通知下方，僅於請款單編輯頁顯示。",
@@ -287,12 +301,29 @@ function normalizeNotification(notification) {
 }
 
 function ensureAdminAccount() {
-  const adminEmail = normalizeEmail(ADMIN_EMAIL);
-  const adminAccount = state.accounts.find((account) => account.email === adminEmail);
-  if (!adminAccount) return;
-  adminAccount.role = "admin";
-  adminAccount.memberCode = "EZ-ADMIN-001";
-  saveAccounts();
+  let didUpdate = false;
+  ADMIN_EMAILS.forEach((email) => {
+    const adminEmail = normalizeEmail(email);
+    const adminAccount = state.accounts.find((account) => account.email === adminEmail);
+    if (!adminAccount) return;
+    const previousMemberCode = adminAccount.memberCode;
+    const nextMemberCode = getAdminMemberCode(adminEmail);
+    adminAccount.role = "admin";
+    adminAccount.memberCode = nextMemberCode;
+    migrateVaultKey(previousMemberCode, nextMemberCode);
+    didUpdate = true;
+  });
+  if (didUpdate) saveAccounts();
+}
+
+function migrateVaultKey(previousMemberCode, nextMemberCode) {
+  if (!previousMemberCode || previousMemberCode === nextMemberCode) return;
+  const previousKey = `${VAULT_PREFIX}${previousMemberCode}`;
+  const nextKey = `${VAULT_PREFIX}${nextMemberCode}`;
+  const savedVault = localStorage.getItem(previousKey);
+  if (savedVault && !localStorage.getItem(nextKey)) {
+    localStorage.setItem(nextKey, savedVault);
+  }
 }
 
 function normalizeEmail(value) {
@@ -318,6 +349,20 @@ function validatePassword(password) {
     /[A-Z]/.test(password) &&
     /\d/.test(password) &&
     /[^A-Za-z0-9]/.test(password);
+}
+
+function isAdminEmail(email) {
+  return ADMIN_EMAILS.map(normalizeEmail).includes(normalizeEmail(email));
+}
+
+function getAdminMemberCode(email) {
+  return ADMIN_MEMBER_CODES[normalizeEmail(email)] || generateMemberCode();
+}
+
+function isEmailVerificationSatisfied() {
+  if (!EMAIL_VERIFICATION_ENABLED) return true;
+  const code = document.querySelector("#registerEmailCode")?.value.trim();
+  return code.length >= 6;
 }
 
 function randomBase64(length) {
@@ -505,12 +550,18 @@ async function handleRegister(event) {
     return;
   }
 
+  if (!isEmailVerificationSatisfied()) {
+    setFormMessage(authMessage, "請完成信箱驗證碼驗證。", "error");
+    return;
+  }
+
   const salt = randomBase64(16);
+  const isAdmin = isAdminEmail(email);
   const account = {
     email,
     nickname,
-    memberCode: email === normalizeEmail(ADMIN_EMAIL) ? "EZ-ADMIN-001" : generateMemberCode(),
-    role: email === normalizeEmail(ADMIN_EMAIL) ? "admin" : "user",
+    memberCode: isAdmin ? getAdminMemberCode(email) : generateMemberCode(),
+    role: isAdmin ? "admin" : "user",
     salt,
     passwordHash: await derivePasswordHash(password, salt),
     disabled: false,
