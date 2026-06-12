@@ -12,10 +12,21 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612010";
+const APP_VERSION = "ez2earn_260612011";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/12",
+    items: [
+      "請款進度追蹤新增業主保留金勾選控制，未勾選時欄位反白停用。",
+      "收款紀錄預設顯示一列，新增按鈕改為新增收款。",
+      "保留金提醒移至右側浮動提醒面板，可延後或關閉逾期提醒。",
+      "主列表新增每張請款單收款進度百分比。",
+      "主頁收支統計新增請款進度分支與對應圓餅圖。"
+    ]
+  },
+  {
+    version: "ez2earn_260612010",
     date: "2026/06/12",
     items: [
       "請款進度追蹤預設收合。",
@@ -139,6 +150,7 @@ const defaultInfo = {
   hasDiscount: false,
   discountAmount: 0,
   paymentTerms: "月結 30 天",
+  ownerRetentionEnabled: true,
   ownerRetentionAmount: 0,
   retentionReminderDate: "",
   progressNote: "",
@@ -167,6 +179,7 @@ const infoFields = [
   "hasDiscount",
   "discountAmount",
   "paymentTerms",
+  "ownerRetentionEnabled",
   "ownerRetentionAmount",
   "retentionReminderDate",
   "progressNote",
@@ -192,6 +205,7 @@ const state = {
   pointerDropId: null,
   invoiceSearchQuery: "",
   listScope: "own",
+  statsMode: "finance",
   statsPeriodType: "year",
   statsStatusFilter: "closed",
   statsCustomStart: getTodayDateValue(),
@@ -223,6 +237,7 @@ const listTabs = document.querySelectorAll("[data-list-scope]");
 const ownInvoiceCount = document.querySelector("#ownInvoiceCount");
 const sharedInvoiceCount = document.querySelector("#sharedInvoiceCount");
 const statsPanel = document.querySelector("#statsPanel");
+const statsModeTabs = document.querySelectorAll("[data-stats-mode]");
 const statsPeriodType = document.querySelector("#statsPeriodType");
 const statsCustomStart = document.querySelector("#statsCustomStart");
 const statsCustomEnd = document.querySelector("#statsCustomEnd");
@@ -289,11 +304,23 @@ const retentionRateWrap = document.querySelector("#retentionRateWrap");
 const retentionRateInput = document.querySelector("#retentionRate");
 const discountAmountWrap = document.querySelector("#discountAmountWrap");
 const discountAmountInput = document.querySelector("#discountAmount");
+const ownerRetentionWrap = document.querySelector("#ownerRetentionWrap");
+const ownerRetentionEnabledInput = document.querySelector("#ownerRetentionEnabled");
+const ownerRetentionAmountInput = document.querySelector("#ownerRetentionAmount");
 const toggleFormulaButton = document.querySelector("#toggleFormulaButton");
 const formulaPanel = document.querySelector("#formulaPanel");
 const formulaList = document.querySelector("#formulaList");
 const addPaymentRecordButton = document.querySelector("#addPaymentRecordButton");
 const paymentRecordsList = document.querySelector("#paymentRecordsList");
+const reminderWidget = document.querySelector("#reminderWidget");
+const reminderButton = document.querySelector("#reminderButton");
+const reminderPanel = document.querySelector("#reminderPanel");
+const reminderDot = document.querySelector("#reminderDot");
+const reminderCount = document.querySelector("#reminderCount");
+const reminderList = document.querySelector("#reminderList");
+const closeReminderButton = document.querySelector("#closeReminderButton");
+const activeReminderEditor = document.querySelector("#activeReminderEditor");
+const retentionReminderDateInput = document.querySelector("#retentionReminderDate");
 const deleteConfirmPanel = document.querySelector("#deleteConfirmPanel");
 const deleteConfirmText = document.querySelector("#deleteConfirmText");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
@@ -844,19 +871,29 @@ function normalizeInvoice(invoice) {
     editLogs: Array.isArray(invoice.editLogs) && invoice.editLogs.length > 0
       ? invoice.editLogs.map(normalizeEditLog)
       : [createEditLog("建立表單", "舊資料補齊編輯記錄")],
-    info: { ...defaultInfo, ...(invoice.info || {}), paymentRecords: normalizePaymentRecords(invoice.info?.paymentRecords) },
+    info: { ...defaultInfo, ...(invoice.info || {}), paymentRecords: normalizePaymentRecords(invoice.info?.paymentRecords, true) },
     details: normalizeDetails(invoice)
   };
 }
 
-function normalizePaymentRecords(records) {
-  if (!Array.isArray(records)) return [];
-  return records.map((record) => ({
+function createEmptyPaymentRecord() {
+  return {
+    id: createId("payment"),
+    date: getTodayDateValue(),
+    amount: 0,
+    note: ""
+  };
+}
+
+function normalizePaymentRecords(records, ensureBlank = false) {
+  const normalized = Array.isArray(records) ? records.map((record) => ({
     id: record.id || createId("payment"),
     date: record.date || getTodayDateValue(),
     amount: toNumber(record.amount),
     note: String(record.note || "").trim()
-  }));
+  })) : [];
+  if (ensureBlank && normalized.length === 0) normalized.push(createEmptyPaymentRecord());
+  return normalized;
 }
 
 function uniqueMemberCodes(value) {
@@ -1393,6 +1430,7 @@ function updateSessionSidebar(isVisible = Boolean(state.currentUser)) {
   if (!isVisible || !state.currentUser) return;
   renderCurrentUser();
   renderLastSaved();
+  renderReminderPanel();
 }
 
 function renderLastSaved() {
@@ -1466,6 +1504,7 @@ function renderInvoiceGroup(title, invoices) {
 
   invoices.forEach((invoice) => {
     const totals = summaryTotals(invoice);
+    const collectionMetrics = getInvoiceCollectionMetrics(invoice, totals);
     const isCollaborative = canAccessInvoice(invoice);
     const roleLabel = getListRoleLabel(invoice);
     const card = document.createElement("article");
@@ -1482,6 +1521,7 @@ function renderInvoiceGroup(title, invoices) {
         </div>
         <div class="invoice-card-meta">
           <strong>${formatCurrency(totals.grandTotal)}</strong>
+          <span class="collection-progress">收款 ${formatPercent(collectionMetrics.progressRate)}</span>
           <span>${invoice.isClosed ? `結案 ${formatDateTime(invoice.closedAt)}` : `更新 ${formatDateTime(invoice.updatedAt)}`}</span>
         </div>
         <div class="invoice-card-actions">
@@ -1510,6 +1550,9 @@ function renderStatsDashboard() {
   document.querySelectorAll(".custom-range-field").forEach((field) => {
     field.classList.toggle("is-hidden", state.statsPeriodType !== "custom");
   });
+  statsModeTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.statsMode === state.statsMode);
+  });
 
   const range = getStatsRange();
   const ownedInvoices = getOwnInvoices();
@@ -1518,6 +1561,10 @@ function renderStatsDashboard() {
     if (state.statsStatusFilter === "ongoing" && invoice.isClosed) return false;
     return isInvoiceInStatsRange(invoice, range);
   });
+  if (state.statsMode === "progress") {
+    renderProgressStatsDashboard(filtered, range);
+    return;
+  }
   const totals = filtered.reduce((sum, invoice) => {
     const item = summaryTotals(invoice);
     sum.subtotal += item.subtotal;
@@ -1552,6 +1599,46 @@ function renderStatsDashboard() {
   renderStatsPie(chartItems);
   renderStatsCards(totals, filtered.length);
   statsRangeLabel.textContent = `${getStatsRangeLabel(range)} · ${getStatsStatusLabel()} · ${filtered.length} 張`;
+}
+
+function renderProgressStatsDashboard(invoices, range) {
+  const totals = invoices.reduce((sum, invoice) => {
+    const metrics = getInvoiceCollectionMetrics(invoice);
+    sum.invoiceAmount += metrics.invoiceAmount;
+    sum.receivedTotal += metrics.receivedTotal;
+    sum.ownerRetentionAmount += metrics.ownerRetentionAmount;
+    sum.outstandingBalance += metrics.outstandingBalance;
+    sum.recordCount += metrics.recordCount;
+    return sum;
+  }, {
+    invoiceAmount: 0,
+    receivedTotal: 0,
+    ownerRetentionAmount: 0,
+    outstandingBalance: 0,
+    recordCount: 0
+  });
+  const progressRate = totals.invoiceAmount > 0 ? totals.receivedTotal / totals.invoiceAmount : 0;
+  renderStatsPie([
+    { label: "已收款", value: totals.receivedTotal, color: "#15a084" },
+    { label: "業主保留金", value: totals.ownerRetentionAmount, color: "#8d7be0" },
+    { label: "待收尾款", value: totals.outstandingBalance, color: "#e35d6a" }
+  ].filter((item) => item.value > 0));
+  statsCards.innerHTML = [
+    ["表單數", `${invoices.length} 張`],
+    ["請款總額", formatCurrency(totals.invoiceAmount)],
+    ["已收款", formatCurrency(totals.receivedTotal)],
+    ["收款進度", formatPercent(progressRate)],
+    ["業主保留金", formatCurrency(totals.ownerRetentionAmount)],
+    ["待收尾款", formatCurrency(totals.outstandingBalance)],
+    ["收款筆數", `${totals.recordCount} 筆`],
+    ["實際入帳率", formatPercent(progressRate)]
+  ].map(([label, value]) => `
+    <article class="stats-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </article>
+  `).join("");
+  statsRangeLabel.textContent = `請款進度 · ${getStatsRangeLabel(range)} · ${getStatsStatusLabel()} · ${invoices.length} 張`;
 }
 
 function renderStatsPie(items) {
@@ -1635,6 +1722,10 @@ function parseDateInput(value) {
 
 function getTodayDateValue() {
   const date = new Date();
+  return toDateInputValue(date);
+}
+
+function toDateInputValue(date) {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
@@ -1672,9 +1763,20 @@ function ensureProgressReminderNotices() {
   let didUpdate = false;
   const today = parseDateInput(getTodayDateValue());
   today.setHours(0, 0, 0, 0);
+  const visibleById = new Map(getVisibleInvoices().map((invoice) => [invoice.id, invoice]));
 
-  getVisibleInvoices().forEach((invoice) => {
+  state.invitations = state.invitations.filter((notice) => {
+    if (notice.type !== "retention-reminder" || notice.toMemberCode !== state.currentUser.memberCode) return true;
+    const invoice = visibleById.get(notice.invoiceId);
+    const info = invoice?.info || {};
+    const isValid = invoice && info.ownerRetentionEnabled !== false && toNumber(info.ownerRetentionAmount) > 0 && info.retentionReminderDate === notice.reminderDate;
+    if (!isValid) didUpdate = true;
+    return isValid;
+  });
+
+  visibleById.forEach((invoice) => {
     const info = invoice.info || {};
+    if (info.ownerRetentionEnabled === false) return;
     const retentionAmount = toNumber(info.ownerRetentionAmount);
     if (retentionAmount <= 0 || !info.retentionReminderDate) return;
     const reminderDate = parseDateInput(info.retentionReminderDate);
@@ -1744,6 +1846,103 @@ function getNoticeText(notice) {
     return `保留金提醒：${escapeHtml(notice.messageText || "請確認業主保留金額與領回時程。")}`;
   }
   return `${escapeHtml(notice.fromNickname)} 邀請你以${escapeHtml(getRoleLabel(notice.role || "editor"))}身份加入 ${escapeHtml(notice.invoiceNo || "")}`;
+}
+
+function getRetentionReminderItems() {
+  if (!state.currentUser) return [];
+  const today = parseDateInput(getTodayDateValue());
+  today.setHours(0, 0, 0, 0);
+  return getVisibleInvoices()
+    .map((invoice) => {
+      const info = invoice.info || {};
+      if (info.ownerRetentionEnabled === false || !info.retentionReminderDate || toNumber(info.ownerRetentionAmount) <= 0) return null;
+      const date = parseDateInput(info.retentionReminderDate);
+      date.setHours(0, 0, 0, 0);
+      const days = Math.round((date - today) / 86400000);
+      return {
+        invoice,
+        date,
+        days,
+        isDue: days <= 3
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date - b.date);
+}
+
+function renderReminderPanel() {
+  if (!state.currentUser) return;
+  const items = getRetentionReminderItems();
+  const dueItems = items.filter((item) => item.isDue);
+  reminderCount.textContent = String(dueItems.length);
+  reminderDot.classList.toggle("is-hidden", dueItems.length === 0);
+  activeReminderEditor.classList.toggle("is-hidden", !state.activeInvoice || !canEditInvoice());
+  if (state.activeInvoice && retentionReminderDateInput) {
+    retentionReminderDateInput.value = state.activeInvoice.info.retentionReminderDate || "";
+  }
+  reminderList.innerHTML = "";
+  if (items.length === 0) {
+    reminderList.innerHTML = `<p class="empty-state">目前沒有保留金提醒。</p>`;
+    return;
+  }
+  items.forEach(({ invoice, date, days }) => {
+    const item = document.createElement("article");
+    item.className = `notice-item${days <= 0 ? " is-urgent" : ""}`;
+    const status = days < 0 ? `已超時 ${Math.abs(days)} 天` : days === 0 ? "今天提醒" : `${days} 天後提醒`;
+    item.innerHTML = `
+      <div>
+        <strong>${escapeHtml(invoice.info.projectName || "未命名工程")}</strong>
+        <p>保留金 ${formatCurrency(toNumber(invoice.info.ownerRetentionAmount))} · ${escapeHtml(status)}</p>
+        <span>${formatFullDate(date)}</span>
+      </div>
+      <div class="reminder-actions">
+        <button class="secondary-button" type="button" data-open-reminder-invoice="${invoice.id}"><span class="button-icon" aria-hidden="true">↗</span>前往</button>
+        ${days <= 0 ? `<button class="secondary-button" type="button" data-delay-reminder="${invoice.id}">延後</button>` : ""}
+        ${days <= 0 ? `<button class="secondary-button danger-button" type="button" data-close-reminder="${invoice.id}">關閉</button>` : ""}
+      </div>
+    `;
+    reminderList.appendChild(item);
+  });
+}
+
+function toggleReminderPanel() {
+  const isOpen = reminderPanel.classList.toggle("is-hidden") === false;
+  reminderButton.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) renderReminderPanel();
+}
+
+function closeReminderPanel() {
+  reminderPanel.classList.add("is-hidden");
+  reminderButton.setAttribute("aria-expanded", "false");
+}
+
+function canEditInvoiceRecord(invoice) {
+  if (!invoice || !state.currentUser) return false;
+  return invoice.ownerMemberCode === state.currentUser.memberCode || (invoice.collaborators || []).includes(state.currentUser.memberCode);
+}
+
+async function updateInvoiceReminder(invoiceId, updater) {
+  const invoice = findVisibleInvoice(invoiceId);
+  if (!invoice || !canEditInvoiceRecord(invoice)) return;
+  updater(invoice.info);
+  state.invitations = state.invitations.filter((notice) => !(notice.type === "retention-reminder" && notice.invoiceId === invoiceId));
+  saveInvitations();
+  if (state.activeInvoiceId === invoiceId && state.activeInvoice) {
+    updater(state.activeInvoice.info);
+    retentionReminderDateInput.value = state.activeInvoice.info.retentionReminderDate || "";
+    await saveActiveInvoice({ silent: true, logAction: "更新提醒", logDetail: "調整保留金提醒" });
+  } else if (state.invoices.some((item) => item.id === invoiceId)) {
+    const index = state.invoices.findIndex((item) => item.id === invoiceId);
+    state.invoices[index] = invoice;
+    state.invoices[index].updatedAt = new Date().toISOString();
+    await persistInvoices();
+    if (invoice.collaborators.length > 0 || (invoice.viewers || []).length > 0) upsertSharedInvoice(invoice);
+  } else {
+    upsertSharedInvoice(invoice);
+  }
+  renderReminderPanel();
+  renderNotices();
+  renderInvoiceList();
 }
 
 function toggleNoticePanel() {
@@ -2177,15 +2376,25 @@ function updateConditionalFields() {
   const taxEnabled = Boolean(info.isTaxIncluded);
   const retentionEnabled = Boolean(info.hasRetention);
   const discountEnabled = Boolean(info.hasDiscount);
+  const ownerRetentionEnabled = info.ownerRetentionEnabled !== false;
   const editable = canEditInvoice();
   customPaymentMethodWrap.classList.toggle("is-disabled-field", !customPaymentEnabled);
   taxRateWrap.classList.toggle("is-disabled-field", !taxEnabled);
   retentionRateWrap.classList.toggle("is-disabled-field", !retentionEnabled);
   discountAmountWrap.classList.toggle("is-disabled-field", !discountEnabled);
+  ownerRetentionWrap.classList.toggle("is-disabled-field", !ownerRetentionEnabled);
   customPaymentMethodInput.disabled = !editable || !customPaymentEnabled;
   taxRateInput.disabled = !editable || !taxEnabled;
   retentionRateInput.disabled = !editable || !retentionEnabled;
   discountAmountInput.disabled = !editable || !discountEnabled;
+  ownerRetentionAmountInput.disabled = !editable || !ownerRetentionEnabled;
+}
+
+function updateOwnerRetentionFields() {
+  if (!state.activeInvoice) return;
+  ownerRetentionEnabledInput.checked = state.activeInvoice.info.ownerRetentionEnabled !== false;
+  ownerRetentionAmountInput.disabled = !canEditInvoice() || state.activeInvoice.info.ownerRetentionEnabled === false;
+  ownerRetentionWrap.classList.toggle("is-disabled-field", state.activeInvoice.info.ownerRetentionEnabled === false);
 }
 
 function getPaymentMethodLabel(info) {
@@ -2251,33 +2460,53 @@ function renderSummary() {
 }
 
 function renderProgressPanel(totals = summaryTotals()) {
-  const info = state.activeInvoice.info;
+  const metrics = getInvoiceCollectionMetrics(state.activeInvoice, totals);
+
+  document.querySelector("#progressInvoiceTotal").textContent = formatCurrency(metrics.invoiceAmount);
+  document.querySelector("#progressReceivedTotal").textContent = formatCurrency(metrics.receivedTotal);
+  document.querySelector("#progressCollectionPercent").textContent = formatPercent(metrics.progressRate);
+  document.querySelector("#progressActualIncomeRate").textContent = formatPercent(metrics.actualIncomeRate);
+  document.querySelector("#progressRetentionHeld").textContent = formatCurrency(metrics.ownerRetentionAmount);
+  document.querySelector("#progressOutstandingBalance").textContent = formatCurrency(metrics.outstandingBalance);
+  document.querySelector("#progressRecordCount").textContent = `${metrics.recordCount} 筆`;
+  document.querySelector("#billingProgressBar").style.width = `${metrics.progressPercent}%`;
+  document.querySelector("#progressHint").textContent = metrics.invoiceAmount > 0
+    ? `本張請款單總額 ${formatCurrency(metrics.invoiceAmount)}，目前已入帳 ${formatCurrency(metrics.receivedTotal)}，待收尾款 ${formatCurrency(metrics.outstandingBalance)}。`
+    : "請先建立請款明細，系統會以本張請款單總額計算收款進度。";
+  document.querySelector("#progressReminderStatus").textContent = getProgressDateStatus(state.activeInvoice.info.retentionReminderDate, metrics.ownerRetentionAmount);
+  updateOwnerRetentionFields();
+  renderReminderPanel();
+}
+
+function getInvoiceCollectionMetrics(invoice, totals = summaryTotals(invoice)) {
+  const info = invoice?.info || {};
   const invoiceAmount = getInvoiceProgressBase(totals);
   const records = normalizePaymentRecords(info.paymentRecords);
-  const receivedTotal = records.reduce((sum, record) => sum + toNumber(record.amount), 0);
-  const ownerRetentionAmount = toNumber(info.ownerRetentionAmount);
+  const receivedRecords = records.filter((record) => toNumber(record.amount) > 0);
+  const receivedTotal = receivedRecords.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  const ownerRetentionEnabled = info.ownerRetentionEnabled !== false;
+  const ownerRetentionAmount = ownerRetentionEnabled ? toNumber(info.ownerRetentionAmount) : 0;
   const outstandingBalance = Math.max(invoiceAmount - receivedTotal - ownerRetentionAmount, 0);
-  const progressRate = invoiceAmount > 0 ? receivedTotal / invoiceAmount : 0;
-  const progressPercent = Math.min(Math.max(progressRate, 0), 1) * 100;
-
-  document.querySelector("#progressInvoiceTotal").textContent = formatCurrency(invoiceAmount);
-  document.querySelector("#progressReceivedTotal").textContent = formatCurrency(receivedTotal);
-  document.querySelector("#progressCollectionPercent").textContent = invoiceAmount > 0 ? formatPercent(progressRate) : "0%";
-  document.querySelector("#progressActualIncomeRate").textContent = invoiceAmount > 0 ? formatPercent(progressRate) : "0%";
-  document.querySelector("#progressRetentionHeld").textContent = formatCurrency(ownerRetentionAmount);
-  document.querySelector("#progressOutstandingBalance").textContent = formatCurrency(outstandingBalance);
-  document.querySelector("#progressRecordCount").textContent = `${records.length} 筆`;
-  document.querySelector("#billingProgressBar").style.width = `${progressPercent}%`;
-  document.querySelector("#progressHint").textContent = invoiceAmount > 0
-    ? `本張請款單總額 ${formatCurrency(invoiceAmount)}，目前已入帳 ${formatCurrency(receivedTotal)}，待收尾款 ${formatCurrency(outstandingBalance)}。`
-    : "請先建立請款明細，系統會以本張請款單總額計算收款進度。";
-  document.querySelector("#progressReminderStatus").textContent = getProgressDateStatus(info.retentionReminderDate, ownerRetentionAmount);
+  const progressRate = invoiceAmount > 0 ? Math.min(receivedTotal / invoiceAmount, 1) : 0;
+  const actualIncomeRate = invoiceAmount > 0 ? Math.min(receivedTotal / invoiceAmount, 1) : 0;
+  return {
+    invoiceAmount,
+    records,
+    recordCount: receivedRecords.length,
+    receivedTotal,
+    ownerRetentionEnabled,
+    ownerRetentionAmount,
+    outstandingBalance,
+    progressRate,
+    actualIncomeRate,
+    progressPercent: progressRate * 100
+  };
 }
 
 function renderPaymentRecords() {
   if (!state.activeInvoice) return;
   const editable = canEditInvoice();
-  const records = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
+  const records = normalizePaymentRecords(state.activeInvoice.info.paymentRecords, true);
   state.activeInvoice.info.paymentRecords = records;
   paymentRecordsList.innerHTML = "";
   if (records.length === 0) {
@@ -2310,13 +2539,8 @@ function renderPaymentRecords() {
 
 function addPaymentRecord() {
   if (!canEditInvoice()) return;
-  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords);
-  state.activeInvoice.info.paymentRecords.push({
-    id: createId("payment"),
-    date: getTodayDateValue(),
-    amount: 0,
-    note: ""
-  });
+  state.activeInvoice.info.paymentRecords = normalizePaymentRecords(state.activeInvoice.info.paymentRecords, true);
+  state.activeInvoice.info.paymentRecords.push(createEmptyPaymentRecord());
   renderPaymentRecords();
   renderSummary();
   markActiveInvoiceDirty();
@@ -3545,6 +3769,8 @@ closeInvoiceButton.addEventListener("click", requestInvoiceStatusChange);
 messageBoardButton.addEventListener("click", toggleMessageBoard);
 closeMessageBoardButton.addEventListener("click", closeMessageBoard);
 messageBoardForm.addEventListener("submit", submitMessage);
+reminderButton.addEventListener("click", toggleReminderPanel);
+closeReminderButton.addEventListener("click", closeReminderPanel);
 noticeToggle.addEventListener("click", toggleNoticePanel);
 copySelectedDetailsButton.addEventListener("click", copySelectedDetails);
 deleteSelectedDetailsButton.addEventListener("click", deleteSelectedDetails);
@@ -3574,6 +3800,13 @@ listTabs.forEach((tab) => {
     state.invoiceSearchQuery = "";
     invoiceSearchInput.value = "";
     renderInvoiceList();
+    renderStatsDashboard();
+  });
+});
+
+statsModeTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    state.statsMode = tab.dataset.statsMode;
     renderStatsDashboard();
   });
 });
@@ -3674,6 +3907,9 @@ infoFields.forEach((field) => {
     if (!canEditInvoice()) return;
     syncInfoFromInputs();
     renderSummary();
+    if (["ownerRetentionEnabled", "ownerRetentionAmount", "retentionReminderDate"].includes(field)) {
+      renderNotices();
+    }
     markActiveInvoiceDirty();
   };
   input.addEventListener("input", syncField);
@@ -3710,6 +3946,30 @@ paymentRecordsList.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-delete-payment-record]");
   if (!deleteButton) return;
   deletePaymentRecord(Number(deleteButton.dataset.deletePaymentRecord));
+});
+
+reminderList.addEventListener("click", async (event) => {
+  const openButton = event.target.closest("[data-open-reminder-invoice]");
+  const delayButton = event.target.closest("[data-delay-reminder]");
+  const closeButton = event.target.closest("[data-close-reminder]");
+  if (openButton) {
+    showForm(openButton.dataset.openReminderInvoice);
+    closeReminderPanel();
+    return;
+  }
+  if (delayButton) {
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + 7);
+    await updateInvoiceReminder(delayButton.dataset.delayReminder, (info) => {
+      info.retentionReminderDate = toDateInputValue(nextDate);
+    });
+    return;
+  }
+  if (closeButton) {
+    await updateInvoiceReminder(closeButton.dataset.closeReminder, (info) => {
+      info.retentionReminderDate = "";
+    });
+  }
 });
 
 detailsContainer.addEventListener("input", (event) => {

@@ -738,6 +738,7 @@ h2 {
   justify-content: space-between;
   gap: 18px;
   align-items: end;
+  flex-wrap: wrap;
 }
 
 .stats-heading h2 {
@@ -750,6 +751,33 @@ h2 {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.stats-mode-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f9fc;
+}
+
+.stats-mode-tab {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.stats-mode-tab.is-active {
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow: 0 4px 10px rgba(15, 31, 61, 0.08);
 }
 
 .stats-controls {
@@ -912,6 +940,19 @@ h2 {
 .invoice-card-meta strong {
   font-size: 20px;
   color: var(--accent-strong);
+}
+
+.collection-progress {
+  display: inline-grid;
+  justify-self: end;
+  min-height: 26px;
+  align-items: center;
+  border-radius: 999px;
+  background: #e4f6f1;
+  color: var(--success) !important;
+  padding: 0 9px;
+  font-size: 12px !important;
+  font-weight: 900;
 }
 
 .fold-panel {
@@ -1281,7 +1322,7 @@ input[type="checkbox"],
 
 .progress-inputs {
   display: grid;
-  grid-template-columns: 180px 180px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -1346,6 +1387,25 @@ input[type="checkbox"],
   gap: 6px;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 800;
+}
+
+.owner-retention-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.65fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.owner-retention-row label:not(.checkbox-field) {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -1445,6 +1505,10 @@ input[type="checkbox"],
   overflow: hidden;
 }
 
+.reminder-widget {
+  overflow: hidden;
+}
+
 .message-board-button {
   position: relative;
   width: 100%;
@@ -1478,6 +1542,31 @@ input[type="checkbox"],
   border-top: 1px solid var(--line);
   background: var(--surface);
   overflow: hidden;
+}
+
+.reminder-editor {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.reminder-editor label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.notice-item.is-urgent {
+  border-color: rgba(180, 35, 47, 0.28);
+  background: #fff7f8;
 }
 
 .message-board-heading {
@@ -2051,6 +2140,10 @@ input[type="checkbox"],
     grid-template-columns: 34px repeat(2, minmax(0, 1fr)) 34px;
   }
 
+  .owner-retention-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .payment-record-row label:last-of-type {
     grid-column: 2 / 4;
   }
@@ -2199,6 +2292,7 @@ input[type="checkbox"],
   .progress-inputs,
   .progress-cards,
   .payment-record-row,
+  .owner-retention-row,
   .stats-controls,
   .stats-panel:not(.has-custom-range) .stats-controls,
   .pie-card,
@@ -2212,6 +2306,10 @@ input[type="checkbox"],
     flex-direction: column;
   }
 
+  .stats-mode-tabs {
+    width: 100%;
+  }
+
   .payment-record-row > span,
   .payment-record-row label,
   .payment-record-row label:last-of-type {
@@ -2221,6 +2319,14 @@ input[type="checkbox"],
   .payment-record-row .delete-row {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .reminder-actions {
+    justify-content: stretch;
+  }
+
+  .reminder-actions .secondary-button {
+    flex: 1 1 100%;
   }
 
   .analytics-grid,

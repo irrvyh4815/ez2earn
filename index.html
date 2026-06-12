@@ -96,6 +96,10 @@
               <h2>收支統計</h2>
               <p id="statsRangeLabel">依目前篩選統計自己建立的請款單</p>
             </div>
+            <div class="stats-mode-tabs" aria-label="統計類型">
+              <button class="stats-mode-tab is-active" type="button" data-stats-mode="finance">收支</button>
+              <button class="stats-mode-tab" type="button" data-stats-mode="progress">請款進度</button>
+            </div>
             <div class="stats-controls">
               <label>
                 期間
@@ -381,14 +385,6 @@
           </summary>
           <section class="progress-panel" aria-label="請款進度追蹤">
             <div class="progress-inputs">
-              <label>
-                業主保留金額
-                <input id="ownerRetentionAmount" type="number" min="0" step="1">
-              </label>
-              <label>
-                提醒日期
-                <input id="retentionReminderDate" type="date">
-              </label>
               <label class="progress-note-field">
                 進度備註
                 <textarea id="progressNote" rows="3" placeholder="記錄付款狀態、保留款領回條件或提醒事項"></textarea>
@@ -396,9 +392,19 @@
             </div>
             <div class="progress-record-heading">
               <h3>收款紀錄</h3>
-              <button class="secondary-button" id="addPaymentRecordButton" type="button"><span class="button-icon" aria-hidden="true">＋</span>新增紀錄</button>
+              <button class="secondary-button" id="addPaymentRecordButton" type="button"><span class="button-icon" aria-hidden="true">＋</span>新增收款</button>
             </div>
             <div id="paymentRecordsList" class="payment-records-list"></div>
+            <div class="owner-retention-row" id="ownerRetentionWrap">
+              <label class="checkbox-field">
+                <input id="ownerRetentionEnabled" type="checkbox">
+                <span>有業主保留金額</span>
+              </label>
+              <label>
+                業主保留金額
+                <input id="ownerRetentionAmount" type="number" min="0" step="1">
+              </label>
+            </div>
             <div class="progress-visual">
               <div class="progress-meter" aria-label="請款比例">
                 <span id="billingProgressBar"></span>
@@ -540,6 +546,30 @@
               <button class="primary-button" type="submit"><span class="button-icon" aria-hidden="true">↗</span>送出</button>
             </form>
             <div id="messageBoardStatus" class="form-message" role="status" aria-live="polite"></div>
+          </aside>
+        </section>
+
+        <section class="reminder-widget sidebar-card" id="reminderWidget" aria-label="提醒">
+          <button class="message-board-button" id="reminderButton" type="button" aria-expanded="false">
+            <span class="button-icon" aria-hidden="true">◷</span>提醒
+            <span class="message-dot is-hidden" id="reminderDot" aria-hidden="true"></span>
+            <strong id="reminderCount">0</strong>
+          </button>
+          <aside class="message-board-panel is-hidden" id="reminderPanel" aria-label="提醒列表">
+            <div class="message-board-heading">
+              <div>
+                <p class="eyebrow">Reminder</p>
+                <h2>提醒列表</h2>
+              </div>
+              <button class="icon-close" id="closeReminderButton" type="button" aria-label="關閉提醒">×</button>
+            </div>
+            <div id="activeReminderEditor" class="reminder-editor is-hidden">
+              <label>
+                保留金提醒日期
+                <input id="retentionReminderDate" type="date">
+              </label>
+            </div>
+            <div id="reminderList" class="notice-list"></div>
           </aside>
         </section>
       </aside>
