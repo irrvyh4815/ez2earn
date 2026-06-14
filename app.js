@@ -12,10 +12,23 @@ const ADMIN_MEMBER_CODES = {
 };
 const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
-const APP_VERSION = "ez2earn_260612012";
+const DATA_BACKEND = {
+  mode: "local",
+  apiBaseUrl: ""
+};
+const APP_VERSION = "ez2earn_260614001";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/14",
+    items: [
+      "右側提醒按鈕改為設置提醒，空狀態改為尚未設置事件提醒。",
+      "工程基本資料預設展開，共同編輯預設收合，並於每次進入表單重置收合狀態。",
+      "建立資料庫銜接準備層，現階段維持本機加密儲存。"
+    ]
+  },
+  {
+    version: "ez2earn_260612012",
     date: "2026/06/12",
     items: [
       "提醒設定改為提醒日期與提醒原因。",
@@ -398,6 +411,33 @@ function formatDateCode(date) {
   return `${yyyy}${mm}${dd}-${hh}${min}`;
 }
 
+function dataStoreGet(key) {
+  return localStorage.getItem(key);
+}
+
+function dataStoreSet(key, value) {
+  localStorage.setItem(key, value);
+}
+
+function dataStoreRemove(key) {
+  localStorage.removeItem(key);
+}
+
+async function databaseRequest(path, options = {}) {
+  if (DATA_BACKEND.mode !== "remote" || !DATA_BACKEND.apiBaseUrl) {
+    throw new Error("Database backend is not configured.");
+  }
+  const response = await fetch(`${DATA_BACKEND.apiBaseUrl}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) throw new Error(`Database request failed: ${response.status}`);
+  return response.json();
+}
+
 async function initApp() {
   state.accounts = loadAccounts();
   state.invitations = loadInvitations();
@@ -412,7 +452,7 @@ async function initApp() {
 
 function loadAccounts() {
   try {
-    const accounts = JSON.parse(localStorage.getItem(ACCOUNT_STORAGE_KEY) || "[]");
+    const accounts = JSON.parse(dataStoreGet(ACCOUNT_STORAGE_KEY) || "[]");
     return Array.isArray(accounts) ? accounts.map(normalizeAccount) : [];
   } catch {
     return [];
@@ -435,12 +475,12 @@ function normalizeAccount(account) {
 }
 
 function saveAccounts() {
-  localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(state.accounts));
+  dataStoreSet(ACCOUNT_STORAGE_KEY, JSON.stringify(state.accounts));
 }
 
 function loadInvitations() {
   try {
-    const invitations = JSON.parse(localStorage.getItem(INVITATION_STORAGE_KEY) || "[]");
+    const invitations = JSON.parse(dataStoreGet(INVITATION_STORAGE_KEY) || "[]");
     return Array.isArray(invitations) ? invitations.map(normalizeNotification) : [];
   } catch {
     return [];
@@ -448,7 +488,7 @@ function loadInvitations() {
 }
 
 function saveInvitations() {
-  localStorage.setItem(INVITATION_STORAGE_KEY, JSON.stringify(state.invitations));
+  dataStoreSet(INVITATION_STORAGE_KEY, JSON.stringify(state.invitations));
 }
 
 function normalizeNotification(notification) {
@@ -471,7 +511,7 @@ function normalizeNotification(notification) {
 
 function loadInviteHistory() {
   try {
-    const history = JSON.parse(localStorage.getItem(INVITE_HISTORY_STORAGE_KEY) || "[]");
+    const history = JSON.parse(dataStoreGet(INVITE_HISTORY_STORAGE_KEY) || "[]");
     return Array.isArray(history) ? history : [];
   } catch {
     return [];
@@ -479,7 +519,7 @@ function loadInviteHistory() {
 }
 
 function saveInviteHistory(history) {
-  localStorage.setItem(INVITE_HISTORY_STORAGE_KEY, JSON.stringify(history));
+  dataStoreSet(INVITE_HISTORY_STORAGE_KEY, JSON.stringify(history));
 }
 
 function rememberInviteTarget(account) {
@@ -507,7 +547,7 @@ function getInviteHistoryForCurrentUser() {
 
 function loadMessageReads() {
   try {
-    const reads = JSON.parse(localStorage.getItem(MESSAGE_READ_STORAGE_KEY) || "{}");
+    const reads = JSON.parse(dataStoreGet(MESSAGE_READ_STORAGE_KEY) || "{}");
     return reads && typeof reads === "object" ? reads : {};
   } catch {
     return {};
@@ -515,7 +555,7 @@ function loadMessageReads() {
 }
 
 function saveMessageReads(reads) {
-  localStorage.setItem(MESSAGE_READ_STORAGE_KEY, JSON.stringify(reads));
+  dataStoreSet(MESSAGE_READ_STORAGE_KEY, JSON.stringify(reads));
 }
 
 function getMessageReadKey(invoiceId) {
@@ -556,9 +596,9 @@ function migrateVaultKey(previousMemberCode, nextMemberCode) {
   if (!previousMemberCode || previousMemberCode === nextMemberCode) return;
   const previousKey = `${VAULT_PREFIX}${previousMemberCode}`;
   const nextKey = `${VAULT_PREFIX}${nextMemberCode}`;
-  const savedVault = localStorage.getItem(previousKey);
-  if (savedVault && !localStorage.getItem(nextKey)) {
-    localStorage.setItem(nextKey, savedVault);
+  const savedVault = dataStoreGet(previousKey);
+  if (savedVault && !dataStoreGet(nextKey)) {
+    dataStoreSet(nextKey, savedVault);
   }
 }
 
@@ -818,7 +858,7 @@ async function handleRegister(event) {
 
 async function loadUserVault() {
   const vaultKey = `${VAULT_PREFIX}${state.currentUser.memberCode}`;
-  const saved = localStorage.getItem(vaultKey);
+  const saved = dataStoreGet(vaultKey);
 
   if (saved) {
     try {
@@ -859,7 +899,7 @@ async function syncOwnedSharedInvoices() {
 function loadLegacyInvoices() {
   for (const key of LEGACY_INVOICE_KEYS) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      const parsed = JSON.parse(dataStoreGet(key) || "[]");
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map(normalizeInvoice);
       }
@@ -1008,12 +1048,12 @@ function getBillableDetails(invoice = state.activeInvoice) {
 async function persistInvoices() {
   if (!state.currentUser || !state.cryptoKey) return;
   const encrypted = await encryptJson({ invoices: state.invoices }, state.cryptoKey);
-  localStorage.setItem(`${VAULT_PREFIX}${state.currentUser.memberCode}`, JSON.stringify(encrypted));
+  dataStoreSet(`${VAULT_PREFIX}${state.currentUser.memberCode}`, JSON.stringify(encrypted));
 }
 
 function loadSharedInvoices() {
   try {
-    const invoices = JSON.parse(localStorage.getItem(SHARED_INVOICE_STORAGE_KEY) || "[]");
+    const invoices = JSON.parse(dataStoreGet(SHARED_INVOICE_STORAGE_KEY) || "[]");
     return Array.isArray(invoices) ? invoices.map(normalizeInvoice) : [];
   } catch {
     return [];
@@ -1021,7 +1061,7 @@ function loadSharedInvoices() {
 }
 
 function saveSharedInvoices(invoices) {
-  localStorage.setItem(SHARED_INVOICE_STORAGE_KEY, JSON.stringify(invoices));
+  dataStoreSet(SHARED_INVOICE_STORAGE_KEY, JSON.stringify(invoices));
 }
 
 function upsertSharedInvoice(invoice) {
@@ -1146,6 +1186,7 @@ function showForm(invoiceId) {
     authView.classList.add("is-hidden");
     listView.classList.add("is-hidden");
     formView.classList.remove("is-hidden");
+    resetFormFoldPanels();
     saveStatus.textContent = "";
     inviteMessage.textContent = "";
     closeCloseConfirm();
@@ -1162,6 +1203,12 @@ function showForm(invoiceId) {
   } else {
     animateViewChange(next);
   }
+}
+
+function resetFormFoldPanels() {
+  formView.querySelectorAll("details.fold-panel[data-default-open]").forEach((panel) => {
+    panel.open = panel.dataset.defaultOpen === "true";
+  });
 }
 
 function requestBackToList() {
@@ -1902,7 +1949,7 @@ function renderReminderPanel() {
   }
   reminderList.innerHTML = "";
   if (items.length === 0) {
-    reminderList.innerHTML = `<p class="empty-state">目前沒有保留金提醒。</p>`;
+    reminderList.innerHTML = `<p class="empty-state">尚未設置事件提醒。</p>`;
     return;
   }
   items.forEach(({ invoice, date, days }) => {
@@ -3658,7 +3705,7 @@ function deleteAccount(memberCode) {
   const account = state.accounts.find((item) => item.memberCode === memberCode);
   if (!account || account.memberCode === state.currentUser.memberCode) return;
   state.accounts = state.accounts.filter((item) => item.memberCode !== memberCode);
-  localStorage.removeItem(`${VAULT_PREFIX}${memberCode}`);
+  dataStoreRemove(`${VAULT_PREFIX}${memberCode}`);
   state.invitations = state.invitations.filter((invite) => invite.fromMemberCode !== memberCode && invite.toMemberCode !== memberCode);
   saveAccounts();
   saveInvitations();

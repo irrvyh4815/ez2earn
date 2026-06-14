@@ -191,7 +191,7 @@
 
         <div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel" data-default-open="false">
           <summary>
             <span>共同編輯</span>
             <span class="summary-count-pill" id="collaborationCountPill">0 人共用</span>
@@ -231,7 +231,7 @@
           </section>
         </details>
 
-        <details class="fold-panel">
+        <details class="fold-panel" data-default-open="true" open>
           <summary>
             <span>工程基本資料</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -329,7 +329,7 @@
           </section>
         </details>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel" data-default-open="true" open>
           <summary>
             <span>請款摘要</span>
             <button class="summary-formula-button" id="toggleFormulaButton" type="button" aria-expanded="false">查看計算式</button>
@@ -378,7 +378,7 @@
           </section>
         </details>
 
-        <details class="fold-panel">
+        <details class="fold-panel" data-default-open="false">
           <summary>
             <span>請款進度追蹤</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -448,7 +448,7 @@
           </section>
         </details>
 
-        <details class="fold-panel">
+        <details class="fold-panel" data-default-open="false">
           <summary>
             <span>備註</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -461,7 +461,7 @@
           </section>
         </details>
 
-        <details class="fold-panel" open>
+        <details class="fold-panel" data-default-open="true" open>
           <summary>
             <span>請款明細</span>
             <span class="fold-icon" aria-hidden="true"></span>
@@ -551,7 +551,7 @@
 
         <section class="reminder-widget sidebar-card" id="reminderWidget" aria-label="提醒">
           <button class="message-board-button" id="reminderButton" type="button" aria-expanded="false">
-            <span class="button-icon" aria-hidden="true">◷</span>提醒
+            <span class="button-icon" aria-hidden="true">◷</span>設置提醒
             <span class="message-dot is-hidden" id="reminderDot" aria-hidden="true"></span>
             <strong id="reminderCount">0</strong>
           </button>
