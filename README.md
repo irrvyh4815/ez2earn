@@ -4,6 +4,7 @@
 
 - 匯出自留存表單 PDF
 - 匯出請款表單 PDF
+- Supabase 資料庫銜接骨架
 
 ## 使用方式
 
@@ -14,5 +15,21 @@
 最高權限管理員 Email 已保留：
 
 - Email: `irrvyh4815@gmail.com`
+- Email: `r3nault1999@gmail.com`
 
 第一次以此 Email 註冊時會自動成為最高權限管理員。密碼不會寫入程式碼或 GitHub，請在註冊時設定符合規則的強密碼。
+
+## Supabase 設定
+
+目前版本已建立 Supabase schema 與 Vercel API 骨架，前端仍預設使用本機加密儲存，避免尚未設定資料庫時影響正式操作。
+
+1. 到 Supabase 建立專案。
+2. 開啟 Supabase SQL Editor，執行 `supabase/schema.sql`。
+3. 到 Vercel 專案的 Environment Variables 新增：
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `EZ2EARN_ENABLE_REMOTE_SYNC`：正式切換遠端同步前先保持空白或 `false`
+4. 重新部署 Vercel。
+5. 部署後可開啟 `/api/health`，確認 `configured` 是否為 `true`。
+
+`SUPABASE_SERVICE_ROLE_KEY` 只能放在 Vercel 環境變數，不能寫進前端檔案或提交到 GitHub。

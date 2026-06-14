@@ -14,12 +14,21 @@ const EMAIL_VERIFICATION_ENABLED = false;
 const PBKDF2_ITERATIONS = 150000;
 const DATA_BACKEND = {
   mode: "local",
-  apiBaseUrl: ""
+  apiBaseUrl: "/api"
 };
-const APP_VERSION = "ez2earn_260614001";
+const APP_VERSION = "ez2earn_260614002";
 const VERSION_HISTORY = [
   {
     version: APP_VERSION,
+    date: "2026/06/14",
+    items: [
+      "新增 Supabase 資料庫 schema 與 Vercel API 銜接骨架。",
+      "資料庫金鑰改由 Vercel 環境變數保管，前端不暴露 service role key。",
+      "現階段維持本機加密儲存，待環境變數完成後可切換遠端同步。"
+    ]
+  },
+  {
+    version: "ez2earn_260614001",
     date: "2026/06/14",
     items: [
       "右側提醒按鈕改為設置提醒，空狀態改為尚未設置事件提醒。",
